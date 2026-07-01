@@ -1,8 +1,9 @@
 import Database from "better-sqlite3";
 import { v4 as uuid } from "uuid";
-import path from "path";
+import { loadEnvFiles, resolveDatabasePath } from "./data-path.mjs";
 
-const dbPath = path.join(process.cwd(), "data", "goukaku.db");
+loadEnvFiles();
+const dbPath = resolveDatabasePath();
 const db = new Database(dbPath);
 
 const YOSHIOKA_ID = "64220ff5-8b1d-44d9-bf0e-d798c2e10521";

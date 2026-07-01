@@ -1,10 +1,12 @@
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import path from "path";
-import fs from "fs";
 import * as schema from "./schema";
 import { seedDatabase } from "./seed";
+import {
+  resolveDatabasePath,
+  useNetworkDatabaseSettings,
+} from "../data-path";
 import { normalizeStudentName } from "../student-name";
 import { seedMembersIfNeeded } from "../members";
 
@@ -255,12 +257,15 @@ function ensureSchema(sqlite: Database.Database) {
 }
 
 function createDb() {
-  const dataDir = path.join(process.cwd(), "data");
-  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-
-  const dbPath = path.join(dataDir, "goukaku.db");
+  const dbPath = resolveDatabasePath();
   const sqlite = new Database(dbPath);
-  sqlite.pragma("journal_mode = WAL");
+  if (useNetworkDatabaseSettings()) {
+    sqlite.pragma("journal_mode = DELETE");
+    sqlite.pragma("synchronous = FULL");
+    sqlite.pragma("busy_timeout = 5000");
+  } else {
+    sqlite.pragma("journal_mode = WAL");
+  }
   sqlite.pragma("foreign_keys = ON");
 
   const db = drizzle(sqlite, { schema });

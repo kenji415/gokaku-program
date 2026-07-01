@@ -1,7 +1,8 @@
 import Database from "better-sqlite3";
-import path from "path";
+import { loadEnvFiles, resolveDatabasePath } from "./data-path.mjs";
 
-const db = new Database(path.join(process.cwd(), "data", "goukaku.db"));
+loadEnvFiles();
+const db = new Database(resolveDatabasePath());
 const student = db
   .prepare(`SELECT id, name, grade, campus, class_name FROM students WHERE name LIKE '%小野%'`)
   .get();

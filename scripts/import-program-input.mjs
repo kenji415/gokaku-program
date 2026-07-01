@@ -2,6 +2,9 @@ import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
 import { v4 as uuid } from "uuid";
+import { loadEnvFiles, resolveDatabasePath } from "./data-path.mjs";
+
+loadEnvFiles();
 
 const CSV_PATH =
   process.argv[2] ??
@@ -81,7 +84,7 @@ const entries = records
 
 console.log(`CSV rows from ${START_ROW}: ${entries.length} entries`);
 
-const db = new Database(path.join(process.cwd(), "data", "goukaku.db"));
+const db = new Database(resolveDatabasePath());
 const students = db.prepare("SELECT id, name FROM students").all();
 const studentByName = new Map(
   students.map((s) => [normalizeName(s.name), s.id]),

@@ -2,8 +2,10 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadEnvFiles } from "./data-path.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+loadEnvFiles(root);
 const cacheDir = path.join(root, ".cache", "puppeteer");
 fs.mkdirSync(cacheDir, { recursive: true });
 
