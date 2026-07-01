@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CRAM_SCHOOL_NAMES, GRADES, GENDERS, SUBJECTS } from "@/lib/constants";
+import { useTestScheduleCramSchoolNames } from "@/hooks/use-test-schedule-cram-schools";
 import { useAutoSave } from "@/hooks/use-auto-save";
 import { TeacherAssignmentInput } from "@/components/TeacherAssignmentInput";
 import { teacherDisplayName } from "@/lib/teacher-assignment";
@@ -37,6 +38,7 @@ export function StudentForm({
   studentId,
 }: StudentFormProps) {
   const router = useRouter();
+  const testScheduleCramSchools = useTestScheduleCramSchoolNames();
   const [savedStudentId, setSavedStudentId] = useState(studentId);
   const [form, setForm] = useState({
     name: initial?.name ?? "",
@@ -132,7 +134,7 @@ export function StudentForm({
             className="mt-1 w-full rounded border px-3 py-2"
             value={form.name}
             onChange={(e) => updateForm({ name: e.target.value })}
-            placeholder="船木　柊"
+            placeholder="受験　太郎"
           />
         </label>
 
@@ -175,7 +177,6 @@ export function StudentForm({
             className="mt-1 w-full rounded border px-3 py-2"
             value={form.cramSchool}
             onChange={(e) => updateForm({ cramSchool: e.target.value })}
-            placeholder="SAPIX"
           />
         </label>
 
@@ -185,7 +186,6 @@ export function StudentForm({
             className="mt-1 w-full rounded border px-3 py-2"
             value={form.campus}
             onChange={(e) => updateForm({ campus: e.target.value })}
-            placeholder="東京校"
           />
         </label>
 
@@ -195,18 +195,16 @@ export function StudentForm({
             className="mt-1 w-full rounded border px-3 py-2"
             value={form.className}
             onChange={(e) => updateForm({ className: e.target.value })}
-            placeholder="S"
           />
         </label>
 
         <label className="text-sm">
           模試パターン
           <input
-            list="cram-school-list"
+            list="mock-exam-pattern-list"
             className="mt-1 w-full rounded border px-3 py-2"
             value={form.mockExamPattern}
             onChange={(e) => updateForm({ mockExamPattern: e.target.value })}
-            placeholder="SAPIX"
           />
           <span className="mt-1 block text-xs text-gray-500">
             設定すると、プログラム新規作成時にテスト日程マスタから
@@ -221,7 +219,6 @@ export function StudentForm({
             className="mt-1 w-full rounded border px-3 py-2"
             value={form.initialChallenges}
             onChange={(e) => updateForm({ initialChallenges: e.target.value })}
-            placeholder="場合の数、平面図形　家庭学習が手一杯"
           />
           <span className="mt-1 block text-xs text-gray-500">
             自由記述。指導開始時ボックスにそのまま表示されます。
@@ -233,6 +230,16 @@ export function StudentForm({
         {CRAM_SCHOOL_NAMES.map((name) => (
           <option key={name} value={name} />
         ))}
+      </datalist>
+
+      <datalist id="mock-exam-pattern-list">
+        {testScheduleCramSchools.map((name) => (
+          <option key={name} value={name} />
+        ))}
+        {form.mockExamPattern &&
+        !testScheduleCramSchools.includes(form.mockExamPattern) ? (
+          <option value={form.mockExamPattern}>{form.mockExamPattern}</option>
+        ) : null}
       </datalist>
 
       <fieldset className="rounded border p-4">

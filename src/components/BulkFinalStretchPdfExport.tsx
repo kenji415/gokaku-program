@@ -1,6 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  consumeBulkPdfExportStream,
+  formatBulkPdfSaveMessage,
+} from "@/lib/client-bulk-pdf-export";
 import { isFinalStretchGrade } from "@/lib/final-stretch-types";
 import { formatPdfExportedAt } from "@/lib/pdf-sheet-utils";
 import { isBrokenStudentName } from "@/lib/student-spreadsheet-utils";
@@ -170,101 +174,16 @@ export function BulkFinalStretchPdfExport({ assignments }: Props) {
         return;
       }
 
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let resultData: {
-        ok?: boolean;
-        folder?: string;
-        created?: {
-          studentId: string;
-          name: string;
-          fileName: string;
-          pdfExportedAt: string;
-        }[];
-        failed?: { studentId: string; name: string; error: string }[];
-      } | null = null;
+      const result = await consumeBulkPdfExportStream(res.body, {
+        onProgress: (doneCount, total) => {
+          const percent = total > 0 ? Math.round((doneCount / total) * 100) : 0;
+          setExportProgress(percent);
+          setMessage(`PDFを作成しています… ${percent}%`);
+        },
+      });
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          const event = JSON.parse(line) as {
-            type: string;
-            done?: number;
-            total?: number;
-            ok?: boolean;
-            folder?: string;
-            created?: {
-              studentId: string;
-              name: string;
-              fileName: string;
-              pdfExportedAt: string;
-            }[];
-            failed?: { studentId: string; name: string; error: string }[];
-            error?: string;
-          };
-
-          if (event.type === "progress") {
-            const doneCount = event.done ?? 0;
-            const total = event.total ?? selectedIds.size;
-            const percent =
-              total > 0 ? Math.round((doneCount / total) * 100) : 0;
-            setExportProgress(percent);
-            setMessage(`PDFを作成しています… ${percent}%`);
-            continue;
-          }
-
-          if (event.type === "error") {
-            setError(event.error ?? "PDFの一括作成に失敗しました");
-            setMessage("");
-            return;
-          }
-
-          if (event.type === "result") {
-            resultData = event;
-          }
-        }
-      }
-
-      if (buffer.trim()) {
-        const event = JSON.parse(buffer) as {
-          type: string;
-          ok?: boolean;
-          folder?: string;
-          created?: {
-            studentId: string;
-            name: string;
-            fileName: string;
-            pdfExportedAt: string;
-          }[];
-          failed?: { studentId: string; name: string; error: string }[];
-          error?: string;
-        };
-        if (event.type === "error") {
-          setError(event.error ?? "PDFの一括作成に失敗しました");
-          setMessage("");
-          return;
-        }
-        if (event.type === "result") {
-          resultData = event;
-        }
-      }
-
-      if (!resultData) {
-        setError("PDFの一括作成に失敗しました");
-        setMessage("");
-        return;
-      }
-
-      const created = resultData.created ?? [];
-      const failed = resultData.failed ?? [];
+      const created = result.created;
+      const failed = result.failed;
 
       setStatusByStudentId((prev) => {
         const next = new Map(prev);
@@ -287,9 +206,7 @@ export function BulkFinalStretchPdfExport({ assignments }: Props) {
       }
 
       if (created.length > 0) {
-        setMessage(
-          `${created.length}件のPDFを保存しました: ${resultData.folder ?? "デスクトップ\\直前期合格プログラムシート"}`,
-        );
+        setMessage(formatBulkPdfSaveMessage(result));
       } else if (failed.length > 0) {
         setMessage("PDFは作成されませんでした");
       } else {
@@ -297,8 +214,12 @@ export function BulkFinalStretchPdfExport({ assignments }: Props) {
       }
 
       await loadStatuses();
-    } catch {
-      setError("PDFの一括作成に失敗しました");
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : "PDFの一括作成に失敗しました",
+      );
       setMessage("");
     } finally {
       setExporting(false);
@@ -322,7 +243,7 @@ export function BulkFinalStretchPdfExport({ assignments }: Props) {
             直前期シート PDF一括作成
           </h2>
           <p className="mt-1 text-xs text-gray-500">
-            卒塾生を除く担当6年生の直前期合格プログラムシートを、デスクトップの「直前期合格プログラムシート」フォルダにPDFで保存します。同名ファイルは上書きされます。作成したPDFの日付を記録します。
+            卒塾生を除く担当6年生の直前期合格プログラムシートをPDFで一括作成し、ダウンロードフォルダに保存します。同名ファイルは上書きされます。作成したPDFの日付を記録します。
           </p>
         </div>
 

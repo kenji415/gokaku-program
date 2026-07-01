@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getSession } from "@/lib/auth";
 import { SESSION_COOKIE_NAME } from "@/lib/auth-session";
-import { resolveProgramSheetExportDir } from "@/lib/desktop-path";
 import { buildPdfFilename } from "@/lib/months";
+import { pdfDownloadResponse } from "@/lib/pdf-download-response";
 import {
   disposePdfBrowser,
+  renderProgramSheetPdf,
   resolvePdfBaseUrl,
-  writeProgramSheetPdf,
 } from "@/lib/pdf-export";
 import { formatUnfilledMonthsError } from "@/lib/pdf-sheet-utils";
 import {
@@ -71,7 +71,7 @@ export async function POST(
 
   let browser;
   try {
-    const result = await writeProgramSheetPdf({
+    const result = await renderProgramSheetPdf({
       sheetId: id,
       filenameBase,
       sessionToken,
@@ -80,11 +80,8 @@ export async function POST(
     browser = result.browser;
     const pdfExportedAt = recordProgramSheetPdfExport(id);
 
-    return NextResponse.json({
-      ok: true,
-      folder: resolveProgramSheetExportDir(),
-      fileName: result.fileName,
-      pdfExportedAt,
+    return pdfDownloadResponse(result.buffer, result.fileName, {
+      "X-Pdf-Exported-At": pdfExportedAt,
     });
   } catch (error) {
     return NextResponse.json(

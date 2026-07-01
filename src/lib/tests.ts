@@ -26,6 +26,20 @@ export function listTestSchedules() {
   return sortTestScheduleRows(rows);
 }
 
+export function getDistinctTestScheduleCramSchools(): string[] {
+  const db = getDb();
+  const rows = db
+    .select({ cramSchool: schema.testSchedules.cramSchool })
+    .from(schema.testSchedules)
+    .all();
+  const names = new Set<string>();
+  for (const row of rows) {
+    const name = row.cramSchool?.trim();
+    if (name) names.add(name);
+  }
+  return [...names].sort((a, b) => a.localeCompare(b, "ja"));
+}
+
 export function createTestSchedule(input: TestScheduleInput) {
   const db = getDb();
   const id = uuid();

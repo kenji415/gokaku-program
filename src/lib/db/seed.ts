@@ -39,7 +39,7 @@ export function seedDatabase(db: BetterSQLite3Database<typeof schema>) {
     },
     {
       id: teacherId,
-      name: "吉岡 英慈",
+      name: "デモ講師",
       loginId: "yoshioka",
       password: "teacher",
       role: "teacher",
@@ -48,7 +48,7 @@ export function seedDatabase(db: BetterSQLite3Database<typeof schema>) {
 
   db.insert(schema.students).values({
     id: studentId,
-    name: "森田 敏弘",
+    name: "受験 太郎",
     gender: "男",
     grade: "4年",
     cramSchool: "SAPIX",

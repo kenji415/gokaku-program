@@ -177,6 +177,34 @@ export function normalizeDateInput(
   return sanitized;
 }
 
+export function hasTestScheduleDate(testDate: string | null | undefined): boolean {
+  return parseTestDateParts(normalizeDateInput(testDate ?? "")) != null;
+}
+
+export function hasFullTestScheduleDay(
+  testDate: string | null | undefined,
+): boolean {
+  const parsed = parseTestDateParts(normalizeDateInput(testDate ?? ""));
+  return (
+    parsed != null && parsed.day != null && parsed.day >= 1 && parsed.day <= 31
+  );
+}
+
+export function formatTestScheduleDisplayText(row: {
+  testName?: string | null;
+  testDate?: string | null;
+  displayText?: string | null;
+}): string {
+  const name = row.testName?.trim();
+  if (!hasFullTestScheduleDay(row.testDate)) {
+    if (name) return name;
+    const legacy = row.displayText?.trim() ?? "";
+    const stripped = legacy.replace(/^\d{1,2}\/\d{1,2}\s+/, "");
+    return stripped || legacy;
+  }
+  return row.displayText?.trim() || name || "";
+}
+
 export function deriveScheduleFields(
   testName: string,
   testDateInput: string,
@@ -192,7 +220,7 @@ export function deriveScheduleFields(
     return {
       testDate: "",
       yearMonth: UNDATED_YEAR_MONTH,
-      displayText: `12/30 ${name}`,
+      displayText: name,
     };
   }
 
@@ -215,14 +243,14 @@ export function deriveScheduleFields(
     return {
       testDate: normalizedDate,
       yearMonth,
-      displayText: `12/30 ${name}`,
+      displayText: name,
     };
   }
 
   return {
     testDate: normalizedInput || input,
     yearMonth: UNDATED_YEAR_MONTH,
-    displayText: `12/30 ${name}`,
+    displayText: name,
   };
 }
 

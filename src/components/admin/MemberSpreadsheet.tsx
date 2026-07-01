@@ -154,7 +154,7 @@ export function MemberSpreadsheet({ initialRows }: Props) {
                     className="w-full rounded border px-2 py-1"
                     value={row.loginId}
                     onChange={(e) => updateCell(index, "loginId", e.target.value)}
-                    placeholder="吉岡"
+                    placeholder="ログインID"
                   />
                 </td>
                 <td className="p-1">
@@ -162,7 +162,7 @@ export function MemberSpreadsheet({ initialRows }: Props) {
                     className="w-full rounded border px-2 py-1 font-mono text-xs"
                     value={row.password}
                     onChange={(e) => updateCell(index, "password", e.target.value)}
-                    placeholder="yamaguchi"
+                    placeholder="パスワード"
                   />
                 </td>
                 <td className="p-1">

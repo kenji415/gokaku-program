@@ -9,6 +9,7 @@ import {
   SUBJECTS,
 } from "@/lib/constants";
 import { useAutoSave } from "@/hooks/use-auto-save";
+import { useTestScheduleCramSchoolNames } from "@/hooks/use-test-schedule-cram-schools";
 import { TeacherAssignmentInput } from "@/components/TeacherAssignmentInput";
 import { teacherDisplayName } from "@/lib/teacher-assignment";
 import {
@@ -43,6 +44,7 @@ export function StudentSpreadsheet({ initialRows, teachers }: Props) {
   const [saveRevision, setSaveRevision] = useState(0);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState("");
+  const testScheduleCramSchools = useTestScheduleCramSchoolNames();
 
   const [contextMenu, setContextMenu] = useState<{
     index: number;
@@ -351,7 +353,7 @@ export function StudentSpreadsheet({ initialRows, teachers }: Props) {
             className="w-full rounded border p-2 font-mono text-xs"
             value={pasteText}
             onChange={(e) => setPasteText(e.target.value)}
-            placeholder="鈴木　康太	男	6年	グノーブル	吉祥寺校	..."
+            placeholder="氏名	性別	学年	塾	校舎	クラス	..."
           />
           <button
             type="button"
@@ -365,6 +367,12 @@ export function StudentSpreadsheet({ initialRows, teachers }: Props) {
 
       <datalist id="cram-school-list">
         {CRAM_SCHOOL_NAMES.map((name) => (
+          <option key={name} value={name} />
+        ))}
+      </datalist>
+
+      <datalist id="mock-exam-pattern-list">
+        {testScheduleCramSchools.map((name) => (
           <option key={name} value={name} />
         ))}
       </datalist>
@@ -545,7 +553,7 @@ export function StudentSpreadsheet({ initialRows, teachers }: Props) {
                 </td>
                 <td className="border border-gray-200 p-0">
                   <input
-                    list="cram-school-list"
+                    list="mock-exam-pattern-list"
                     className="w-full border-0 bg-transparent px-1 py-1.5 text-xs outline-none focus:bg-yellow-50"
                     value={row.mockExamPattern}
                     onChange={(e) =>

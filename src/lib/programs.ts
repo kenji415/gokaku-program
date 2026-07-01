@@ -4,6 +4,8 @@ import { getDb } from "./db";
 import * as schema from "./db/schema";
 import { buildMonthSlots, parseYearMonth } from "./months";
 import {
+  formatTestScheduleDisplayText,
+  hasTestScheduleDate,
   sortTestScheduleRows,
   sortTestSchedulesByGradeDesc,
   testBelongsToYearMonth,
@@ -418,8 +420,10 @@ function matchesMakerStudentSearch(
 
 export function getAllTestsForMonth(yearMonth: string) {
   return sortTestSchedulesByGradeDesc(
-    getCachedTestSchedules().filter((row) =>
-      testBelongsToYearMonth(row, yearMonth),
+    getCachedTestSchedules().filter(
+      (row) =>
+        hasTestScheduleDate(row.testDate) &&
+        testBelongsToYearMonth(row, yearMonth),
     ),
   );
 }
@@ -433,8 +437,15 @@ export function getAllTestsForYearMonths(
 
   for (const yearMonth of uniqueMonths) {
     result[yearMonth] = sortTestSchedulesByGradeDesc(
-      rows.filter((row) => testBelongsToYearMonth(row, yearMonth)),
-    ).map((t) => ({ id: t.id, displayText: t.displayText }));
+      rows.filter(
+        (row) =>
+          hasTestScheduleDate(row.testDate) &&
+          testBelongsToYearMonth(row, yearMonth),
+      ),
+    ).map((t) => ({
+      id: t.id,
+      displayText: formatTestScheduleDisplayText(t),
+    }));
   }
 
   return result;
@@ -449,6 +460,7 @@ export function getTestsForMonth(
   return sortTestScheduleRows(
     getCachedTestSchedules().filter((row) => {
       if (row.grade !== grade) return false;
+      if (!hasTestScheduleDate(row.testDate)) return false;
       if (row.yearMonth !== yearMonth) return false;
       if (!row.inTestCourse) return false;
       if (pattern && row.cramSchool !== pattern) return false;
@@ -487,6 +499,7 @@ export function getSelectableTestsForMonth(
   const pattern = mockExamPattern?.trim();
   return sortTestScheduleRows(
     rows.filter((row) => {
+      if (!hasTestScheduleDate(row.testDate)) return false;
       if (!testBelongsToYearMonth(row, yearMonth)) return false;
       if (studentLinkedIds.has(row.id)) return true;
       if (!row.inTestCourse) return false;
@@ -494,7 +507,10 @@ export function getSelectableTestsForMonth(
       if (pattern) return cram === pattern;
       return !cram;
     }),
-  );
+  ).map((row) => ({
+    ...row,
+    displayText: formatTestScheduleDisplayText(row),
+  }));
 }
 
 /** 模試パターンが設定されている場合、その塾名×学年のテストを月ごとに取得 */
@@ -790,7 +806,9 @@ function buildMonthsData(
           const stored = resultMap.get(link.testScheduleId);
           return {
             id: link.testScheduleId,
-            displayText: test?.displayText ?? "",
+            displayText: test
+              ? formatTestScheduleDisplayText(test)
+              : "",
             result: stored ?? null,
             grade: test?.grade ?? "",
             cramSchool: test?.cramSchool ?? "",

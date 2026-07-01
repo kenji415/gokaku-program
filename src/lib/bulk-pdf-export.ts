@@ -1,8 +1,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 import type { Browser } from "puppeteer";
-import { resolveProgramSheetExportDir } from "@/lib/desktop-path";
+import { disposePdfBrowser, renderProgramSheetPdf } from "@/lib/pdf-export";
 import { buildPdfFilename } from "@/lib/months";
-import { disposePdfBrowser, writeProgramSheetPdf } from "@/lib/pdf-export";
 import {
   findOrCreateProgramSheet,
   getUnfilledMonthLabels,
@@ -50,6 +49,7 @@ async function processBulkPdfStudent(params: {
   browser: Browser | undefined;
   created: BulkPdfCreatedItem[];
   failed: BulkPdfFailedItem[];
+  emit?: (payload: object) => void;
 }): Promise<Browser | undefined> {
   const db = getDb();
   const {
@@ -62,6 +62,7 @@ async function processBulkPdfStudent(params: {
     baseUrl,
     created,
     failed,
+    emit,
   } = params;
   let browser = params.browser;
 
@@ -130,7 +131,7 @@ async function processBulkPdfStudent(params: {
       teacherName,
     });
 
-    const result = await writeProgramSheetPdf({
+    const result = await renderProgramSheetPdf({
       sheetId: sheet.id,
       filenameBase,
       sessionToken,
@@ -140,11 +141,20 @@ async function processBulkPdfStudent(params: {
     browser = result.browser;
 
     const pdfExportedAt = recordProgramSheetPdfExport(sheet.id);
-    created.push({
+    const item: BulkPdfCreatedItem = {
       studentId,
       name: student.name,
       fileName: result.fileName,
       pdfExportedAt,
+    };
+    created.push(item);
+    emit?.({
+      type: "pdf",
+      studentId: item.studentId,
+      name: item.name,
+      fileName: item.fileName,
+      pdfExportedAt: item.pdfExportedAt,
+      data: result.buffer.toString("base64"),
     });
   } catch (error) {
     failed.push({
@@ -187,6 +197,7 @@ export async function runBulkPdfExport(
       browser,
       created,
       failed,
+      emit,
     });
     emit({ type: "progress", done: index + 1, total });
   }
@@ -194,7 +205,6 @@ export async function runBulkPdfExport(
   emit({
     type: "result",
     ok: failed.length === 0,
-    folder: resolveProgramSheetExportDir(),
     created,
     failed,
   });

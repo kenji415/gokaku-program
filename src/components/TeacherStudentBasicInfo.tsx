@@ -8,6 +8,7 @@ import {
   type MutableRefObject,
 } from "react";
 import { CRAM_SCHOOL_NAMES, GENDERS, GRADES } from "@/lib/constants";
+import { useTestScheduleCramSchoolNames } from "@/hooks/use-test-schedule-cram-schools";
 import { formatGraduationYear } from "@/lib/graduation";
 import { useAutoSave } from "@/hooks/use-auto-save";
 import { normalizeStudentName } from "@/lib/student-name";
@@ -79,6 +80,7 @@ export function TeacherStudentBasicInfo({
   const [saveRevision, setSaveRevision] = useState(0);
   const [unassigning, setUnassigning] = useState(false);
   const [graduating, setGraduating] = useState(false);
+  const testScheduleCramSchools = useTestScheduleCramSchoolNames();
   const infoRef = useRef<StudentBasicInfo | null>(null);
   const savedIdRef = useRef<string | null>(null);
   const skipNameLookupRef = useRef(false);
@@ -336,7 +338,7 @@ export function TeacherStudentBasicInfo({
               className={fieldClass}
               value={info.name}
               onChange={(e) => updateField("name", e.target.value)}
-              placeholder="船木　柊"
+              placeholder="受験　太郎"
               autoFocus={isNew}
             />
           </label>
@@ -351,7 +353,6 @@ export function TeacherStudentBasicInfo({
                 className={fieldClass}
                 value={info.cramSchool}
                 onChange={(e) => updateField("cramSchool", e.target.value)}
-                placeholder="SAPIX"
               />
             </label>
             <label className="block min-w-0 text-sm">
@@ -363,7 +364,6 @@ export function TeacherStudentBasicInfo({
                 className={fieldClass}
                 value={info.campus}
                 onChange={(e) => updateField("campus", e.target.value)}
-                placeholder="東京校"
               />
             </label>
             <label className="block min-w-0 text-sm">
@@ -375,7 +375,6 @@ export function TeacherStudentBasicInfo({
                 className={fieldClass}
                 value={info.className}
                 onChange={(e) => updateField("className", e.target.value)}
-                placeholder="S"
               />
             </label>
             <label className="block min-w-0 text-sm">
@@ -390,15 +389,13 @@ export function TeacherStudentBasicInfo({
                 }
               >
                 <option value="">—</option>
-                {CRAM_SCHOOL_NAMES.map((name) => (
+                {testScheduleCramSchools.map((name) => (
                   <option key={name} value={name}>
                     {name}
                   </option>
                 ))}
                 {info.mockExamPattern &&
-                !CRAM_SCHOOL_NAMES.includes(
-                  info.mockExamPattern as (typeof CRAM_SCHOOL_NAMES)[number],
-                ) ? (
+                !testScheduleCramSchools.includes(info.mockExamPattern) ? (
                   <option value={info.mockExamPattern}>
                     {info.mockExamPattern}
                   </option>

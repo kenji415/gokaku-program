@@ -56,7 +56,6 @@ export function LoginForm() {
           value={loginId}
           onChange={(e) => setLoginId(e.target.value)}
           autoComplete="username"
-          placeholder="吉岡"
         />
       </label>
 
@@ -80,10 +79,6 @@ export function LoginForm() {
       >
         {loading ? "ログイン中…" : "ログイン"}
       </button>
-
-      <p className="mt-4 text-center text-xs text-gray-500">
-        例: アカウント名「吉岡」／パスワード「yamaguchi」
-      </p>
     </form>
   );
 }

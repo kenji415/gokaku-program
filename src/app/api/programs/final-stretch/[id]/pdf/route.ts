@@ -2,17 +2,17 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getSession } from "@/lib/auth";
 import { SESSION_COOKIE_NAME } from "@/lib/auth-session";
-import { resolveFinalStretchExportDir } from "@/lib/desktop-path";
 import {
   getFinalStretchSheet,
   recordFinalStretchPdfExport,
   userCanAccessFinalStretchSheet,
 } from "@/lib/final-stretch";
 import { buildFinalStretchPdfFilename } from "@/lib/months";
+import { pdfDownloadResponse } from "@/lib/pdf-download-response";
 import {
   disposePdfBrowser,
+  renderFinalStretchSheetPdf,
   resolvePdfBaseUrl,
-  writeFinalStretchSheetPdf,
 } from "@/lib/pdf-export";
 
 export const runtime = "nodejs";
@@ -60,7 +60,7 @@ export async function POST(
 
   let browser;
   try {
-    const result = await writeFinalStretchSheetPdf({
+    const result = await renderFinalStretchSheetPdf({
       sheetId: id,
       filenameBase,
       sessionToken,
@@ -69,11 +69,8 @@ export async function POST(
     browser = result.browser;
     const pdfExportedAt = recordFinalStretchPdfExport(id);
 
-    return NextResponse.json({
-      ok: true,
-      folder: resolveFinalStretchExportDir(),
-      fileName: result.fileName,
-      pdfExportedAt,
+    return pdfDownloadResponse(result.buffer, result.fileName, {
+      "X-Pdf-Exported-At": pdfExportedAt,
     });
   } catch (error) {
     return NextResponse.json(

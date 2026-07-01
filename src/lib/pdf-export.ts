@@ -9,21 +9,14 @@ import {
 } from "./desktop-path";
 import { resolveChromeExecutable } from "./puppeteer-chrome";
 
-function resolveBaseUrl(request: Request): string {
-  const configured = process.env.APP_BASE_URL?.trim();
-  if (configured) return configured.replace(/\/$/, "");
-
-  const origin = request.headers.get("origin");
-  if (origin) return origin;
-
-  const host = request.headers.get("host");
-  if (host) return `http://${host}`;
-
-  return `http://localhost:${process.env.PORT ?? 3000}`;
+/** Puppeteer はサーバー PC 上で動くため、常に loopback を使う（LAN IP だと自 PC から届かず固まる） */
+function resolvePdfServerBaseUrl(): string {
+  const port = process.env.PORT ?? 3000;
+  return `http://127.0.0.1:${port}`;
 }
 
-export function resolvePdfBaseUrl(request: Request): string {
-  return resolveBaseUrl(request);
+export function resolvePdfBaseUrl(_request?: Request): string {
+  return resolvePdfServerBaseUrl();
 }
 
 async function launchPdfBrowser(): Promise<Browser> {
@@ -31,6 +24,7 @@ async function launchPdfBrowser(): Promise<Browser> {
     headless: true,
     executablePath: await resolveChromeExecutable(),
     args: [
+      "--headless=new",
       "--disable-dev-shm-usage",
       "--disable-gpu",
       "--disable-software-rasterizer",
@@ -59,15 +53,22 @@ export async function disposePdfBrowser(browser?: Browser): Promise<void> {
   }
 }
 
+const PROGRAM_SHEET_PDF_OPTIONS = {
+  printBackground: true,
+  width: "257mm",
+  height: "182mm",
+  margin: { top: "0", right: "0", bottom: "0", left: "0" },
+  pageRanges: "1",
+} as const;
+
 async function exportViewerSheetToPdfWithBrowser(
   browser: Browser,
   params: {
     sheetId: string;
     sessionToken: string;
-    outputPath: string;
     baseUrl: string;
   },
-): Promise<void> {
+): Promise<Buffer> {
   const page = await browser.newPage();
   try {
     await page.setCacheEnabled(false);
@@ -125,16 +126,36 @@ async function exportViewerSheetToPdfWithBrowser(
       { timeout: 15_000 },
     );
 
-    await page.pdf({
-      path: params.outputPath,
-      printBackground: true,
-      width: "257mm",
-      height: "182mm",
-      margin: { top: "0", right: "0", bottom: "0", left: "0" },
-      pageRanges: "1",
-    });
+    const pdfBuffer = await page.pdf(PROGRAM_SHEET_PDF_OPTIONS);
+    return Buffer.from(pdfBuffer);
   } finally {
     await page.close();
+  }
+}
+
+export async function renderProgramSheetPdf(params: {
+  sheetId: string;
+  filenameBase: string;
+  sessionToken: string;
+  request?: Request;
+  baseUrl?: string;
+  browser?: Browser;
+}): Promise<{ buffer: Buffer; fileName: string; browser: Browser }> {
+  const fileName = `${sanitizePdfFilename(params.filenameBase)}.pdf`;
+  const baseUrl = params.baseUrl ?? resolvePdfServerBaseUrl();
+  const browser = params.browser ?? (await launchPdfBrowser());
+  const ownsBrowser = !params.browser;
+
+  try {
+    const buffer = await exportViewerSheetToPdfWithBrowser(browser, {
+      sheetId: params.sheetId,
+      sessionToken: params.sessionToken,
+      baseUrl,
+    });
+    return { buffer, fileName, browser };
+  } catch (error) {
+    if (ownsBrowser) await disposePdfBrowser(browser);
+    throw error;
   }
 }
 
@@ -147,34 +168,10 @@ export async function writeProgramSheetPdf(params: {
   browser?: Browser;
 }): Promise<{ filePath: string; fileName: string; browser: Browser }> {
   const exportDir = resolveProgramSheetExportDir();
-  const fileName = `${sanitizePdfFilename(params.filenameBase)}.pdf`;
-  const filePath = path.join(exportDir, fileName);
-  const baseUrl =
-    params.baseUrl ??
-    (params.request
-      ? resolveBaseUrl(params.request)
-      : `http://localhost:${process.env.PORT ?? 3000}`);
-  const browser = params.browser ?? (await launchPdfBrowser());
-  const ownsBrowser = !params.browser;
-
-  try {
-    await exportViewerSheetToPdfWithBrowser(browser, {
-      sheetId: params.sheetId,
-      sessionToken: params.sessionToken,
-      outputPath: filePath,
-      baseUrl,
-    });
-  } catch (error) {
-    if (ownsBrowser) await disposePdfBrowser(browser);
-    throw error;
-  }
-
-  if (!fs.existsSync(filePath)) {
-    if (ownsBrowser) await disposePdfBrowser(browser);
-    throw new Error("PDF file was not created");
-  }
-
-  return { filePath, fileName, browser };
+  const result = await renderProgramSheetPdf(params);
+  const filePath = path.join(exportDir, result.fileName);
+  fs.writeFileSync(filePath, result.buffer);
+  return { filePath, fileName: result.fileName, browser: result.browser };
 }
 
 async function exportFinalStretchSheetToPdfWithBrowser(
@@ -182,10 +179,9 @@ async function exportFinalStretchSheetToPdfWithBrowser(
   params: {
     sheetId: string;
     sessionToken: string;
-    outputPath: string;
     baseUrl: string;
   },
-): Promise<void> {
+): Promise<Buffer> {
   const page = await browser.newPage();
   try {
     await page.setCacheEnabled(false);
@@ -242,16 +238,36 @@ async function exportFinalStretchSheetToPdfWithBrowser(
       { timeout: 15_000 },
     );
 
-    await page.pdf({
-      path: params.outputPath,
-      printBackground: true,
-      width: "257mm",
-      height: "182mm",
-      margin: { top: "0", right: "0", bottom: "0", left: "0" },
-      pageRanges: "1",
-    });
+    const pdfBuffer = await page.pdf(PROGRAM_SHEET_PDF_OPTIONS);
+    return Buffer.from(pdfBuffer);
   } finally {
     await page.close();
+  }
+}
+
+export async function renderFinalStretchSheetPdf(params: {
+  sheetId: string;
+  filenameBase: string;
+  sessionToken: string;
+  request?: Request;
+  baseUrl?: string;
+  browser?: Browser;
+}): Promise<{ buffer: Buffer; fileName: string; browser: Browser }> {
+  const fileName = `${sanitizePdfFilename(params.filenameBase)}.pdf`;
+  const baseUrl = params.baseUrl ?? resolvePdfServerBaseUrl();
+  const browser = params.browser ?? (await launchPdfBrowser());
+  const ownsBrowser = !params.browser;
+
+  try {
+    const buffer = await exportFinalStretchSheetToPdfWithBrowser(browser, {
+      sheetId: params.sheetId,
+      sessionToken: params.sessionToken,
+      baseUrl,
+    });
+    return { buffer, fileName, browser };
+  } catch (error) {
+    if (ownsBrowser) await disposePdfBrowser(browser);
+    throw error;
   }
 }
 
@@ -264,34 +280,10 @@ export async function writeFinalStretchSheetPdf(params: {
   browser?: Browser;
 }): Promise<{ filePath: string; fileName: string; browser: Browser }> {
   const exportDir = resolveFinalStretchExportDir();
-  const fileName = `${sanitizePdfFilename(params.filenameBase)}.pdf`;
-  const filePath = path.join(exportDir, fileName);
-  const baseUrl =
-    params.baseUrl ??
-    (params.request
-      ? resolveBaseUrl(params.request)
-      : `http://localhost:${process.env.PORT ?? 3000}`);
-  const browser = params.browser ?? (await launchPdfBrowser());
-  const ownsBrowser = !params.browser;
-
-  try {
-    await exportFinalStretchSheetToPdfWithBrowser(browser, {
-      sheetId: params.sheetId,
-      sessionToken: params.sessionToken,
-      outputPath: filePath,
-      baseUrl,
-    });
-  } catch (error) {
-    if (ownsBrowser) await disposePdfBrowser(browser);
-    throw error;
-  }
-
-  if (!fs.existsSync(filePath)) {
-    if (ownsBrowser) await disposePdfBrowser(browser);
-    throw new Error("PDF file was not created");
-  }
-
-  return { filePath, fileName, browser };
+  const result = await renderFinalStretchSheetPdf(params);
+  const filePath = path.join(exportDir, result.fileName);
+  fs.writeFileSync(filePath, result.buffer);
+  return { filePath, fileName: result.fileName, browser: result.browser };
 }
 
 export async function closePdfBrowser(browser: Browser | undefined): Promise<void> {

@@ -13,6 +13,7 @@ import { CRAM_SCHOOL_NAMES, GRADES } from "@/lib/constants";
 import { useAutoSave } from "@/hooks/use-auto-save";
 import {
   emptyRow,
+  formatTestScheduleDisplayText,
   moveRowInList,
   normalizeDateInput,
   parsePastedRows,
@@ -565,7 +566,7 @@ export function TestScheduleSpreadsheet({
                     {draggedRow.inTestCourse ? "✓" : ""}
                   </td>
                   <td className="px-2 py-1.5 text-xs text-red-700">
-                    {draggedRow.displayText}
+                    {formatTestScheduleDisplayText(draggedRow)}
                   </td>
                   <td className="w-12" />
                 </tr>
@@ -727,7 +728,7 @@ export function TestScheduleSpreadsheet({
                     </label>
                   </td>
                   <td className="border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-red-700">
-                    {row.displayText || "—"}
+                    {formatTestScheduleDisplayText(row) || "—"}
                   </td>
                   {readOnly ? null : (
                     <td className="sticky right-0 z-10 border border-gray-200 bg-white p-1 text-center shadow-[-4px_0_8px_rgba(0,0,0,0.06)]">

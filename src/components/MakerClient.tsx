@@ -14,6 +14,7 @@ import { TeacherStudentList } from "@/components/TeacherStudentList";
 import { ScoreHistoryPanel } from "@/components/ScoreHistoryPanel";
 import { useAutoSave } from "@/hooks/use-auto-save";
 import { buildPdfFilename, buildFinalStretchPdfFilename, shiftYearMonth } from "@/lib/months";
+import { savePdfFromResponse } from "@/lib/client-pdf-download";
 import type {
   MakerStudentListItem,
   ProgramSheetData,
@@ -976,21 +977,15 @@ export function MakerClient({
       const res = await fetch(`/api/programs/${sheet.id}/pdf`, {
         method: "POST",
       });
-      const data = (await res.json()) as {
-        ok?: boolean;
-        folder?: string;
-        fileName?: string;
-        pdfExportedAt?: string;
-        error?: string;
-      };
+      const result = await savePdfFromResponse(res, `${pdfFilename}.pdf`);
 
-      if (!res.ok) {
-        setPdfError(data.error ?? "PDFの作成に失敗しました");
+      if (!result.ok) {
+        setPdfError(result.error);
         return;
       }
 
       setPdfMessage(
-        `PDFを保存しました: ${data.folder ?? "デスクトップ\\合格プログラムシート"}\\${data.fileName ?? ""}`,
+        `PDFをダウンロードフォルダに保存しました: ${result.fileName}`,
       );
     } catch {
       setPdfError("PDFの作成に失敗しました");
@@ -1013,21 +1008,18 @@ export function MakerClient({
         `/api/programs/final-stretch/${finalStretchSheet.id}/pdf`,
         { method: "POST" },
       );
-      const data = (await res.json()) as {
-        ok?: boolean;
-        folder?: string;
-        fileName?: string;
-        pdfExportedAt?: string;
-        error?: string;
-      };
+      const result = await savePdfFromResponse(
+        res,
+        `${finalStretchPdfFilename}.pdf`,
+      );
 
-      if (!res.ok) {
-        setPdfError(data.error ?? "PDFの作成に失敗しました");
+      if (!result.ok) {
+        setPdfError(result.error);
         return;
       }
 
       setPdfMessage(
-        `PDFを保存しました: ${data.folder ?? "デスクトップ\\直前期合格プログラムシート"}\\${data.fileName ?? ""}`,
+        `PDFをダウンロードフォルダに保存しました: ${result.fileName}`,
       );
     } catch {
       setPdfError("PDFの作成に失敗しました");
@@ -1543,8 +1535,8 @@ export function MakerClient({
             {activeTab === "by-teacher"
               ? "講師ごとのプログラムシート作成状況を確認できます。"
               : activeTab === "bulk-final-stretch-pdf"
-                ? "デスクトップの「直前期合格プログラムシート」フォルダにPDFを保存します。"
-                : "デスクトップの「合格プログラムシート」フォルダにPDFを保存します。"}
+                ? "PDFはダウンロードフォルダに保存されます。"
+                : "PDFはダウンロードフォルダに保存されます。"}
           </div>
         )}
       </footer>

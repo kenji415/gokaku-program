@@ -9,7 +9,10 @@ import {
   serializeExtraScores,
   type StudentTestResultInput,
 } from "./test-result-types";
-import { eventDateSortRank } from "./test-schedule-utils";
+import {
+  eventDateSortRank,
+  formatTestScheduleDisplayText,
+} from "./test-schedule-utils";
 
 export type { StudentTestResultInput };
 export { EMPTY_TEST_RESULT };
@@ -232,7 +235,7 @@ export function getStudentTestResultHistory(
         testDate: test.testDate?.trim() || test.yearMonth,
         cramSchool: test.cramSchool?.trim() || "",
         testName: test.testName,
-        displayText: test.displayText,
+        displayText: formatTestScheduleDisplayText(test),
         result: item.result,
         sortRank,
       };
@@ -272,10 +275,10 @@ export function getRecentStudentTestResults(
   return scored
     .map((item) => {
       const test = testMap.get(item.testScheduleId);
-      if (!test?.displayText) return null;
+      if (!test || !formatTestScheduleDisplayText(test)) return null;
       return {
         testScheduleId: item.testScheduleId,
-        displayText: test.displayText,
+        displayText: formatTestScheduleDisplayText(test),
         result: item.result,
         sortRank: eventDateSortRank(test.testDate, test.yearMonth),
       };

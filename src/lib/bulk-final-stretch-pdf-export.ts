@@ -1,17 +1,15 @@
 import { and, eq, isNull } from "drizzle-orm";
 import type { Browser } from "puppeteer";
-import { resolveFinalStretchExportDir } from "@/lib/desktop-path";
 import {
   findOrCreateFinalStretchSheet,
   isFinalStretchGrade,
   recordFinalStretchPdfExport,
 } from "@/lib/final-stretch";
 import { buildFinalStretchPdfFilename } from "@/lib/months";
-import { disposePdfBrowser, writeFinalStretchSheetPdf } from "@/lib/pdf-export";
+import { disposePdfBrowser, renderFinalStretchSheetPdf } from "@/lib/pdf-export";
 import { releaseRuntimeMemory } from "@/lib/runtime-memory";
 import { getDb } from "@/lib/db";
 import * as schema from "@/lib/db/schema";
-
 const BULK_PDF_BROWSER_RECYCLE_EVERY = 3;
 
 export type BulkFinalStretchPdfExportParams = {
@@ -46,6 +44,7 @@ async function processBulkFinalStretchPdfStudent(params: {
   browser: Browser | undefined;
   created: BulkFinalStretchPdfCreatedItem[];
   failed: BulkFinalStretchPdfFailedItem[];
+  emit?: (payload: object) => void;
 }): Promise<Browser | undefined> {
   const db = getDb();
   const {
@@ -57,6 +56,7 @@ async function processBulkFinalStretchPdfStudent(params: {
     baseUrl,
     created,
     failed,
+    emit,
   } = params;
   let browser = params.browser;
 
@@ -122,7 +122,7 @@ async function processBulkFinalStretchPdfStudent(params: {
       teacherName,
     });
 
-    const result = await writeFinalStretchSheetPdf({
+    const result = await renderFinalStretchSheetPdf({
       sheetId: sheet.id,
       filenameBase,
       sessionToken,
@@ -132,11 +132,20 @@ async function processBulkFinalStretchPdfStudent(params: {
     browser = result.browser;
 
     const pdfExportedAt = recordFinalStretchPdfExport(sheet.id);
-    created.push({
+    const item: BulkFinalStretchPdfCreatedItem = {
       studentId,
       name: student.name,
       fileName: result.fileName,
       pdfExportedAt,
+    };
+    created.push(item);
+    emit?.({
+      type: "pdf",
+      studentId: item.studentId,
+      name: item.name,
+      fileName: item.fileName,
+      pdfExportedAt: item.pdfExportedAt,
+      data: result.buffer.toString("base64"),
     });
   } catch (error) {
     failed.push({
@@ -178,6 +187,7 @@ export async function runBulkFinalStretchPdfExport(
       browser,
       created,
       failed,
+      emit,
     });
     emit({ type: "progress", done: index + 1, total });
   }
@@ -185,7 +195,6 @@ export async function runBulkFinalStretchPdfExport(
   emit({
     type: "result",
     ok: failed.length === 0,
-    folder: resolveFinalStretchExportDir(),
     created,
     failed,
   });
