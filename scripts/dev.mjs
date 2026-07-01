@@ -15,6 +15,8 @@ const child = spawn(
     "--expose-gc",
     path.join(root, "node_modules", "next", "dist", "bin", "next"),
     "dev",
+    "-H",
+    "0.0.0.0",
   ],
   {
     cwd: root,
