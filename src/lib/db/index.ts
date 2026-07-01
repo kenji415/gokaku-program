@@ -391,10 +391,6 @@ function migrateStudentMonthTests(sqlite: Database.Database) {
 export function getDb() {
   if (!globalForDb.db) {
     globalForDb.db = createDb();
-  } else {
-    ensureSchema(globalForDb.db.sqlite);
-    migrateStudentMonthTests(globalForDb.db.sqlite);
-    seedMembersIfNeeded(globalForDb.db.sqlite, globalForDb.db.drizzle);
   }
   return globalForDb.db.drizzle;
 }

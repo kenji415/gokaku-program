@@ -13,6 +13,7 @@ import { studentNameMatchesQuery } from "./student-name";
 import { getStudentTestResultsForIds, getRecentStudentTestResults } from "./test-results";
 import type { RecentTestResult } from "./test-results";
 import type { StudentTestResultInput } from "./test-result-types";
+import { getCachedTestSchedules } from "./test-schedule-cache";
 export type { StudentTestResultInput } from "./test-result-types";
 export { EMPTY_TEST_RESULT } from "./test-result-types";
 
@@ -416,14 +417,27 @@ function matchesMakerStudentSearch(
 }
 
 export function getAllTestsForMonth(yearMonth: string) {
-  const db = getDb();
   return sortTestSchedulesByGradeDesc(
-    db
-      .select()
-      .from(schema.testSchedules)
-      .all()
-      .filter((row) => testBelongsToYearMonth(row, yearMonth)),
+    getCachedTestSchedules().filter((row) =>
+      testBelongsToYearMonth(row, yearMonth),
+    ),
   );
+}
+
+export function getAllTestsForYearMonths(
+  yearMonths: string[],
+): Record<string, { id: string; displayText: string }[]> {
+  const uniqueMonths = [...new Set(yearMonths)];
+  const rows = getCachedTestSchedules();
+  const result: Record<string, { id: string; displayText: string }[]> = {};
+
+  for (const yearMonth of uniqueMonths) {
+    result[yearMonth] = sortTestSchedulesByGradeDesc(
+      rows.filter((row) => testBelongsToYearMonth(row, yearMonth)),
+    ).map((t) => ({ id: t.id, displayText: t.displayText }));
+  }
+
+  return result;
 }
 
 export function getTestsForMonth(
@@ -431,22 +445,15 @@ export function getTestsForMonth(
   yearMonth: string,
   cramSchool?: string | null,
 ) {
-  const db = getDb();
-  const conditions = [
-    eq(schema.testSchedules.grade, grade),
-    eq(schema.testSchedules.yearMonth, yearMonth),
-    eq(schema.testSchedules.inTestCourse, 1),
-  ];
-  if (cramSchool) {
-    conditions.push(eq(schema.testSchedules.cramSchool, cramSchool));
-  }
+  const pattern = cramSchool?.trim();
   return sortTestScheduleRows(
-    db
-      .select()
-      .from(schema.testSchedules)
-      .where(and(...conditions))
-      .all()
-      .filter((row) => testBelongsToYearMonth(row, yearMonth)),
+    getCachedTestSchedules().filter((row) => {
+      if (row.grade !== grade) return false;
+      if (row.yearMonth !== yearMonth) return false;
+      if (!row.inTestCourse) return false;
+      if (pattern && row.cramSchool !== pattern) return false;
+      return testBelongsToYearMonth(row, yearMonth);
+    }),
   );
 }
 
@@ -458,11 +465,7 @@ export function getSelectableTestsForMonth(
   studentId?: string | null,
 ) {
   const db = getDb();
-  const rows = db
-    .select()
-    .from(schema.testSchedules)
-    .where(eq(schema.testSchedules.grade, grade))
-    .all();
+  const rows = getCachedTestSchedules().filter((row) => row.grade === grade);
 
   const studentLinkedIds = new Set<string>();
   if (studentId) {
@@ -633,25 +636,27 @@ function setStudentMonthTests(
   const db = getDb();
   const uniqueIds = [...new Set(testIds)];
 
-  db.delete(schema.studentMonthTests)
-    .where(
-      and(
-        eq(schema.studentMonthTests.studentId, studentId),
-        eq(schema.studentMonthTests.yearMonth, yearMonth),
-      ),
-    )
-    .run();
-
-  for (const testId of uniqueIds) {
-    db.insert(schema.studentMonthTests)
-      .values({
-        id: uuid(),
-        studentId,
-        yearMonth,
-        testScheduleId: testId,
-      })
+  db.transaction((tx) => {
+    tx.delete(schema.studentMonthTests)
+      .where(
+        and(
+          eq(schema.studentMonthTests.studentId, studentId),
+          eq(schema.studentMonthTests.yearMonth, yearMonth),
+        ),
+      )
       .run();
-  }
+
+    for (const testId of uniqueIds) {
+      tx.insert(schema.studentMonthTests)
+        .values({
+          id: uuid(),
+          studentId,
+          yearMonth,
+          testScheduleId: testId,
+        })
+        .run();
+    }
+  });
 }
 
 function seedStudentMonthTestsIfEmpty(
@@ -764,11 +769,7 @@ function buildMonthsData(
   const tests =
     testIds.length === 0
       ? []
-      : db
-          .select()
-          .from(schema.testSchedules)
-          .where(inArray(schema.testSchedules.id, testIds))
-          .all();
+      : getCachedTestSchedules().filter((row) => testIds.includes(row.id));
 
   const testMap = new Map(tests.map((t) => [t.id, t]));
   const resultMap = getStudentTestResultsForIds(studentId, testIds);
@@ -924,12 +925,6 @@ export function findOrCreateProgramSheet(params: {
     };
   }
 
-  ensureProgramMonthsForSheet(
-    sheet.id,
-    params.startYearMonth,
-    params.studentId,
-  );
-
   return getProgramSheet(sheet.id)!;
 }
 
@@ -938,16 +933,12 @@ function filterTestIdsForYearMonth(
   yearMonth: string,
 ): string[] {
   if (testIds.length === 0) return [];
-  const db = getDb();
-  const rows = db
-    .select()
-    .from(schema.testSchedules)
-    .where(inArray(schema.testSchedules.id, testIds))
-    .all();
+  const byId = new Map(getCachedTestSchedules().map((row) => [row.id, row]));
   const allowed = new Set(
-    rows
-      .filter((row) => testBelongsToYearMonth(row, yearMonth))
-      .map((row) => row.id),
+    testIds.filter((id) => {
+      const row = byId.get(id);
+      return row ? testBelongsToYearMonth(row, yearMonth) : false;
+    }),
   );
   return testIds.filter((id) => allowed.has(id));
 }
@@ -983,42 +974,71 @@ export function saveProgramSheet(
     .where(eq(schema.users.id, sheet.teacherId))
     .get();
 
-  for (const month of payload.months) {
-    db.update(schema.programMonths)
-      .set({
-        monthTitle: month.monthTitle,
-        content: month.content,
-      })
-      .where(eq(schema.programMonths.id, month.id))
-      .run();
+  const monthIds = payload.months.map((month) => month.id);
+  const monthRows =
+    monthIds.length === 0
+      ? []
+      : db
+          .select()
+          .from(schema.programMonths)
+          .where(inArray(schema.programMonths.id, monthIds))
+          .all();
+  const monthById = new Map(monthRows.map((month) => [month.id, month]));
 
-    const monthRow = db
-      .select()
-      .from(schema.programMonths)
-      .where(eq(schema.programMonths.id, month.id))
-      .get();
-    if (monthRow) {
-      setStudentMonthTests(
-        sheet.studentId,
+  db.transaction((tx) => {
+    for (const month of payload.months) {
+      tx.update(schema.programMonths)
+        .set({
+          monthTitle: month.monthTitle,
+          content: month.content,
+        })
+        .where(eq(schema.programMonths.id, month.id))
+        .run();
+
+      const monthRow = monthById.get(month.id);
+      if (!monthRow) continue;
+
+      const filteredTestIds = filterTestIdsForYearMonth(
+        month.testIds,
         monthRow.yearMonth,
-        filterTestIdsForYearMonth(month.testIds, monthRow.yearMonth),
       );
-    }
-  }
+      const uniqueIds = [...new Set(filteredTestIds)];
 
-  db.update(schema.programSheets)
-    .set({
-      campus: normalizeSheetCampusForStorage(
-        payload.campus,
-        teacher?.defaultCampus,
-      ),
-      goal: payload.goal.trim() || null,
-      initialMockExams: payload.initialMockExams.trim() || null,
-      initialChallenges: payload.initialChallenges.trim() || null,
-      updatedAt: now,
-    })
-    .where(eq(schema.programSheets.id, sheetId))
-    .run();
+      tx.delete(schema.studentMonthTests)
+        .where(
+          and(
+            eq(schema.studentMonthTests.studentId, sheet.studentId),
+            eq(schema.studentMonthTests.yearMonth, monthRow.yearMonth),
+          ),
+        )
+        .run();
+
+      for (const testId of uniqueIds) {
+        tx.insert(schema.studentMonthTests)
+          .values({
+            id: uuid(),
+            studentId: sheet.studentId,
+            yearMonth: monthRow.yearMonth,
+            testScheduleId: testId,
+          })
+          .run();
+      }
+    }
+
+    tx.update(schema.programSheets)
+      .set({
+        campus: normalizeSheetCampusForStorage(
+          payload.campus,
+          teacher?.defaultCampus,
+        ),
+        goal: payload.goal.trim() || null,
+        initialMockExams: payload.initialMockExams.trim() || null,
+        initialChallenges: payload.initialChallenges.trim() || null,
+        updatedAt: now,
+      })
+      .where(eq(schema.programSheets.id, sheetId))
+      .run();
+  });
 }
 
 export function teacherCanAccessSheet(

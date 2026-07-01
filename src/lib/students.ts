@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import { getDb } from "./db";
 import * as schema from "./db/schema";
@@ -228,8 +228,19 @@ export function listTeachers() {
 /** 氏名欄に表全体が入った壊れたレコードを削除し、個別生徒として補完 */
 export function repairBrokenStudentsInDb(): number {
   const db = getDb();
-  const all = db.select().from(schema.students).all();
-  const broken = all.filter((s) => s.name.includes("\t"));
+  const brokenProbe = db
+    .select({ id: schema.students.id })
+    .from(schema.students)
+    .where(sql`instr(${schema.students.name}, char(9)) > 0`)
+    .limit(1)
+    .get();
+  if (!brokenProbe) return 0;
+
+  const broken = db
+    .select()
+    .from(schema.students)
+    .all()
+    .filter((s) => s.name.includes("\t"));
   if (broken.length === 0) return 0;
 
   let repaired = 0;

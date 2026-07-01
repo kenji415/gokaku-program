@@ -4,6 +4,7 @@ import { getDb } from "./db";
 import * as schema from "./db/schema";
 import type { SpreadsheetRow } from "./test-schedule-utils";
 import { isRowEmpty, sortTestScheduleRows } from "./test-schedule-utils";
+import { invalidateTestScheduleCache } from "./test-schedule-cache";
 
 export type TestScheduleInput = {
   cramSchool?: string;
@@ -40,6 +41,7 @@ export function createTestSchedule(input: TestScheduleInput) {
       inTestCourse: input.inTestCourse ? 1 : 0,
     })
     .run();
+  invalidateTestScheduleCache();
   return id;
 }
 
@@ -57,6 +59,7 @@ export function updateTestSchedule(id: string, input: TestScheduleInput) {
     })
     .where(eq(schema.testSchedules.id, id))
     .run();
+  invalidateTestScheduleCache();
 }
 
 export function deleteTestSchedule(id: string) {
@@ -73,6 +76,7 @@ export function deleteTestSchedule(id: string) {
   db.delete(schema.testSchedules)
     .where(eq(schema.testSchedules.id, id))
     .run();
+  invalidateTestScheduleCache();
 }
 
 export function bulkSaveTestSchedules(
@@ -181,5 +185,6 @@ export function bulkSaveTestSchedules(
     }
   });
 
+  invalidateTestScheduleCache();
   return saved;
 }

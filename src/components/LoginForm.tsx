@@ -32,9 +32,7 @@ export function LoginForm() {
 
     const data = await res.json();
     const from = searchParams.get("from");
-    if (data.user.role === "admin" && (!from || from === "/")) {
-      router.push("/admin");
-    } else if (from && from !== "/login") {
+    if (from && from !== "/login" && from !== "/") {
       router.push(from);
     } else {
       router.push("/maker");

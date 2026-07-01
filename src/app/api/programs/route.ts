@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import {
   findOrCreateProgramSheet,
-  getAllTestsForMonth,
+  getAllTestsForYearMonths,
 } from "@/lib/programs";
 import { userCanViewProgramSheet } from "@/lib/teacher-overview";
 import { buildMonthSlots } from "@/lib/months";
@@ -72,17 +72,9 @@ export async function POST(request: Request) {
 
   const slots = buildMonthSlots(body.startYearMonth);
   const allTestsForMonth: Record<string, { id: string; displayText: string }[]> =
-    {};
-
-  if (student) {
-    for (const slot of slots) {
-      const tests = getAllTestsForMonth(slot.yearMonth);
-      allTestsForMonth[slot.yearMonth] = tests.map((t) => ({
-        id: t.id,
-        displayText: t.displayText,
-      }));
-    }
-  }
+    student
+      ? getAllTestsForYearMonths(slots.map((slot) => slot.yearMonth))
+      : {};
 
   return NextResponse.json({ sheet, allTestsForMonth });
 }
