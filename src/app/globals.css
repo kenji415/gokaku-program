@@ -51,6 +51,20 @@
   --program-footer-pad-right: calc(
     var(--program-scaled-inset-x) + var(--program-box-layer-pad-right) * var(--program-scale)
   );
+  /* B5縦 176×250mm（講習提案書） */
+  --course-proposal-sheet-w: 176mm;
+  --course-proposal-sheet-h: 250mm;
+  --course-proposal-pad-x: 9mm;
+  --course-proposal-pad-y: 7mm;
+  --course-proposal-pad-top: 10mm;
+  --course-proposal-header-h: 10mm;
+  --course-proposal-title-h: 21mm;
+  --course-proposal-footer-h: 11mm;
+  --course-proposal-grid-gap: 2.5mm;
+  --course-proposal-grid-row-gap: 5mm;
+  --course-proposal-subject-head-h: 8mm;
+  --course-proposal-subject-foot-h: 7.5mm;
+  --course-proposal-subject-advice-h: 64mm;
 }
 
 body {
@@ -767,6 +781,13 @@ body {
     min-height: 0 !important;
     width: var(--program-sheet-w) !important;
     height: var(--program-sheet-h) !important;
+    background: white !important;
+  }
+
+  .course-proposal-print-page {
+    min-height: 0 !important;
+    width: var(--course-proposal-sheet-w) !important;
+    height: var(--course-proposal-sheet-h) !important;
     background: white !important;
   }
 
@@ -1585,6 +1606,292 @@ body {
   .final-stretch-cell-text.final-stretch-target-school-text {
     font-size: 10px !important;
     line-height: 1.35 !important;
+  }
+}
+
+/* 講習提案書（B5縦 176×250mm） */
+.course-proposal-sheet {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: var(--course-proposal-sheet-w);
+  height: var(--course-proposal-sheet-h);
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: #fff;
+  color: #171717;
+}
+
+.course-proposal-sheet-inner {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  box-sizing: border-box;
+  padding: var(--course-proposal-pad-top) var(--course-proposal-pad-x)
+    var(--course-proposal-pad-y);
+}
+
+.course-proposal-header-table {
+  width: 100%;
+  flex-shrink: 0;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+.course-proposal-header-table td {
+  height: var(--course-proposal-header-h);
+  border: 1px solid #9ca3af;
+  padding: 0 2.5mm;
+  vertical-align: middle;
+}
+
+.course-proposal-header-table td:nth-child(1),
+.course-proposal-header-table td:nth-child(2),
+.course-proposal-header-table td:nth-child(3) {
+  text-align: center;
+}
+
+.course-proposal-header-table td:first-child {
+  width: 60%;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.course-proposal-header-table td:nth-child(2) {
+  width: 15%;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.course-proposal-header-table td:nth-child(3) {
+  width: 25%;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.course-proposal-title-block {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: var(--course-proposal-title-h);
+  margin-top: 2mm;
+  text-align: center;
+}
+
+.course-proposal-title-block h1 {
+  margin: 0;
+  font-family:
+    var(--font-program-header),
+    "Hiragino Kyokasho ProN",
+    "Hiragino Kyokasho Pro",
+    "UD Digi Kyokasho",
+    "Yu Kyokasho",
+    "游教科書体",
+    "Yu Mincho",
+    "Hiragino Mincho ProN",
+    serif;
+  font-feature-settings: "palt" 1;
+  font-size: 20px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  line-height: 1.25;
+}
+
+.course-proposal-title-block p {
+  margin: 2mm 0 0;
+  font-size: 9px;
+  line-height: 1.3;
+  color: #374151;
+}
+
+.course-proposal-grid {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto auto;
+  align-content: start;
+  align-items: start;
+  gap: var(--course-proposal-grid-gap);
+  row-gap: var(--course-proposal-grid-row-gap);
+  margin-top: 2.5mm;
+}
+
+.course-proposal-subject-box {
+  display: flex;
+  flex-direction: column;
+  align-self: start;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #9ca3af;
+  background: #fff;
+}
+
+.course-proposal-subject-box--readonly {
+  background: #fafafa;
+}
+
+.course-proposal-subject-box--readonly .course-proposal-subject-head {
+  background: #eceff1;
+  color: #4b5563;
+}
+
+.course-proposal-subject-box--readonly .course-proposal-subject-advice,
+.course-proposal-subject-box--readonly .course-proposal-subject-meta-input {
+  background: #fafafa;
+  color: #374151;
+  cursor: default;
+}
+
+.course-proposal-subject-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  min-height: var(--course-proposal-subject-head-h);
+  border-bottom: 1px solid #9ca3af;
+  background: #f3f4f6;
+  padding: 1mm 2mm;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.course-proposal-subject-body {
+  flex: 0 0 auto;
+  height: var(--course-proposal-subject-advice-h);
+  min-height: 0;
+}
+
+.course-proposal-subject-advice {
+  height: 100%;
+  min-height: 0;
+  width: 100%;
+  resize: none;
+  border: 0;
+  background: #fff;
+  padding: 1.5mm 2mm;
+  font-size: 14px;
+  line-height: 1.4;
+  outline: none;
+  overflow: auto;
+  white-space: pre-wrap;
+  box-sizing: border-box;
+}
+
+.course-proposal-subject-advice:focus {
+  box-shadow: inset 0 0 0 1px #1e3a5f;
+}
+
+.course-proposal-subject-advice::placeholder {
+  color: #9ca3af;
+}
+
+.course-proposal-subject-meta {
+  display: grid;
+  flex-shrink: 0;
+  grid-template-columns: 1fr 1fr;
+  height: var(--course-proposal-subject-foot-h);
+  border-top: 1px solid #9ca3af;
+  font-size: 8.5px;
+  line-height: 1.2;
+}
+
+.course-proposal-subject-meta-cell {
+  display: flex;
+  align-items: center;
+  gap: 1mm;
+  min-width: 0;
+  padding: 0 1.5mm;
+  color: #374151;
+}
+
+.course-proposal-subject-meta-cell:first-child {
+  border-right: 1px solid #9ca3af;
+}
+
+.course-proposal-subject-meta-cell span {
+  flex-shrink: 0;
+}
+
+.course-proposal-subject-meta-input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-size: inherit;
+  line-height: inherit;
+  outline: none;
+}
+
+.course-proposal-subject-meta-input:focus {
+  box-shadow: none;
+}
+
+.course-proposal-subject-meta-value {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #111827;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.course-proposal-subject-meta-cell--count .course-proposal-subject-meta-input {
+  text-align: right;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.course-proposal-footer {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  height: var(--course-proposal-footer-h);
+  margin-top: 1.5mm;
+}
+
+.course-proposal-footer-logo {
+  display: block;
+  width: auto;
+  height: 8mm;
+  opacity: 0.9;
+}
+
+@media print {
+  .course-proposal-print-page {
+    min-height: 0 !important;
+    width: var(--course-proposal-sheet-w) !important;
+    height: var(--course-proposal-sheet-h) !important;
+    background: white !important;
+  }
+
+  .course-proposal-sheet {
+    width: var(--course-proposal-sheet-w) !important;
+    height: var(--course-proposal-sheet-h) !important;
+    border: none !important;
+    box-shadow: none !important;
+    page-break-after: avoid;
+    page-break-inside: avoid;
+  }
+
+  .course-proposal-subject-advice {
+    overflow: hidden !important;
+    white-space: pre-wrap !important;
+    word-break: break-word;
   }
 }
 

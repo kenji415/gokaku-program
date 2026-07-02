@@ -1,9 +1,24 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { getDb } from "./db";
 import * as schema from "./db/schema";
+import {
+  COURSE_PROPOSAL_SUBJECTS,
+  type CourseProposalSeason,
+  type CourseProposalSubject,
+  type CourseProposalSubjectData,
+} from "./course-proposal-types";
+import {
+  FINAL_STRETCH_MONTHS,
+  isFinalStretchGrade,
+} from "./final-stretch-types";
 import { buildMonthSlots } from "./months";
 import { getProgramSheet } from "./programs";
 import { supportsAssignedCampus } from "./member-constants";
+
+export type TeacherOverviewSheetKind =
+  | "program"
+  | "final-stretch"
+  | "course-proposal";
 
 export type TeacherOverviewMonthCell = {
   yearMonth: string;
@@ -45,8 +60,159 @@ function resolveDisplayCampus(
   return trimOrEmpty(teacherDefaultCampus);
 }
 
+function resolveOverviewSheetCampus(
+  sheetCampus: string | null | undefined,
+  teacherDefaultCampus: string | null | undefined,
+  studentCampus: string | null | undefined,
+  knownCampus?: string,
+): string {
+  const fromSheet = resolveDisplayCampus(
+    sheetCampus,
+    teacherDefaultCampus,
+    studentCampus,
+  );
+  if (fromSheet) return fromSheet;
+  if (knownCampus) return knownCampus;
+  return "";
+}
+
+function buildStudentTeacherCampusCache(
+  rows: AssignmentOverviewRow[],
+): Map<string, string> {
+  const db = getDb();
+  const cache = new Map<string, string>();
+  const seen = new Set<string>();
+
+  for (const row of rows) {
+    const key = `${row.studentId}:${row.teacherId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const sheets = db
+      .select({ campus: schema.programSheets.campus })
+      .from(schema.programSheets)
+      .where(
+        and(
+          eq(schema.programSheets.studentId, row.studentId),
+          eq(schema.programSheets.teacherId, row.teacherId),
+        ),
+      )
+      .orderBy(desc(schema.programSheets.updatedAt))
+      .all();
+
+    for (const sheet of sheets) {
+      const campus = resolveDisplayCampus(
+        sheet.campus,
+        row.teacherDefaultCampus,
+        row.studentCampus,
+      );
+      if (campus) {
+        cache.set(key, campus);
+        break;
+      }
+    }
+  }
+
+  return cache;
+}
+
+/** 校舎未設定の担当は一覧に含める（プログラムシート未作成など） */
+function matchesTeacherOverviewCampusFilter(
+  campusFilter: string | null,
+  sheetCampus: string,
+): boolean {
+  if (!campusFilter) return true;
+  if (!sheetCampus) return true;
+  return sheetCampus === campusFilter;
+}
+
 function monthHasContent(content: string | null | undefined): boolean {
   return Boolean(content?.trim());
+}
+
+type AssignmentOverviewRow = {
+  teacherId: string;
+  teacherName: string;
+  teacherDefaultCampus: string | null;
+  studentId: string;
+  studentName: string;
+  grade: string;
+  studentCampus: string | null;
+  subject: string;
+};
+
+function listActiveAssignmentRows(): AssignmentOverviewRow[] {
+  const db = getDb();
+  return db
+    .select({
+      teacherId: schema.studentAssignments.teacherId,
+      teacherName: schema.users.name,
+      teacherDefaultCampus: schema.users.defaultCampus,
+      studentId: schema.students.id,
+      studentName: schema.students.name,
+      grade: schema.students.grade,
+      studentCampus: schema.students.campus,
+      subject: schema.studentAssignments.subject,
+    })
+    .from(schema.studentAssignments)
+    .innerJoin(
+      schema.students,
+      eq(schema.students.id, schema.studentAssignments.studentId),
+    )
+    .innerJoin(
+      schema.users,
+      eq(schema.users.id, schema.studentAssignments.teacherId),
+    )
+    .where(isNull(schema.students.graduatedAt))
+    .all();
+}
+
+function parseCourseProposalSubjectsJson(
+  raw: string | null | undefined,
+): Partial<Record<CourseProposalSubject, Partial<CourseProposalSubjectData>>> {
+  if (!raw?.trim()) return {};
+  try {
+    return JSON.parse(raw) as Partial<
+      Record<CourseProposalSubject, Partial<CourseProposalSubjectData>>
+    >;
+  } catch {
+    return {};
+  }
+}
+
+function courseProposalSubjectHasContent(
+  data: Partial<CourseProposalSubjectData> | undefined,
+): boolean {
+  return Boolean(data?.advice?.trim() || data?.sessionCount?.trim());
+}
+
+function finalStretchMonthHasContent(
+  rows: {
+    monthKey: string;
+    measure: string | null;
+    unitTheme: string | null;
+    detail: string | null;
+  }[],
+  monthKey: string,
+): boolean {
+  return rows.some(
+    (row) =>
+      row.monthKey === monthKey &&
+      Boolean(row.measure?.trim() || row.unitTheme?.trim() || row.detail?.trim()),
+  );
+}
+
+function sortTeacherGroups(
+  groups: TeacherOverviewTeacherGroup[],
+): TeacherOverviewTeacherGroup[] {
+  return groups
+    .map((group) => ({
+      ...group,
+      students: group.students.sort((a, b) =>
+        a.studentName.localeCompare(b.studentName, "ja"),
+      ),
+    }))
+    .sort((a, b) => a.teacherName.localeCompare(b.teacherName, "ja"));
 }
 
 function getViewerAssignedCampus(userId: string): string | null {
@@ -71,6 +237,18 @@ function resolveCampusScope(
     return assignedCampus;
   }
   if (memberRole === "校長") {
+    return assignedCampus ?? undefined;
+  }
+  return null;
+}
+
+/** 講師別一覧用。管理者は全校舎（画面の校舎検索のみ）、校長は担当校舎 */
+function resolveTeacherOverviewCampusScope(
+  userId: string,
+  memberRole: string | undefined,
+): string | null | undefined {
+  if (memberRole === "校長") {
+    const assignedCampus = getViewerAssignedCampus(userId);
     return assignedCampus ?? undefined;
   }
   return null;
@@ -151,33 +329,13 @@ export function getTeacherOverview(
   const slots = buildMonthSlots(startYearMonth);
   const yearMonths = slots.map((slot) => slot.yearMonth);
 
-  const campusScope = resolveCampusScope(viewerId, memberRole);
+  const campusScope = resolveTeacherOverviewCampusScope(viewerId, memberRole);
   if (campusScope === undefined) return [];
 
   const campusFilter = campusScope;
 
-  const assignmentRows = db
-    .select({
-      teacherId: schema.studentAssignments.teacherId,
-      teacherName: schema.users.name,
-      teacherDefaultCampus: schema.users.defaultCampus,
-      studentId: schema.students.id,
-      studentName: schema.students.name,
-      grade: schema.students.grade,
-      studentCampus: schema.students.campus,
-      subject: schema.studentAssignments.subject,
-    })
-    .from(schema.studentAssignments)
-    .innerJoin(
-      schema.students,
-      eq(schema.students.id, schema.studentAssignments.studentId),
-    )
-    .innerJoin(
-      schema.users,
-      eq(schema.users.id, schema.studentAssignments.teacherId),
-    )
-    .where(isNull(schema.students.graduatedAt))
-    .all();
+  const assignmentRows = listActiveAssignmentRows();
+  const campusCache = buildStudentTeacherCampusCache(assignmentRows);
 
   const byTeacher = new Map<string, TeacherOverviewTeacherGroup>();
 
@@ -195,13 +353,15 @@ export function getTeacherOverview(
       .orderBy(desc(schema.programSheets.updatedAt))
       .all()[0];
 
-    const sheetCampus = resolveDisplayCampus(
+    const campusKey = `${row.studentId}:${row.teacherId}`;
+    const sheetCampus = resolveOverviewSheetCampus(
       sheet?.campus,
       row.teacherDefaultCampus,
       row.studentCampus,
+      campusCache.get(campusKey),
     );
 
-    if (campusFilter && sheetCampus !== campusFilter) continue;
+    if (!matchesTeacherOverviewCampusFilter(campusFilter, sheetCampus)) continue;
 
     const allMonthRows =
       sheet && yearMonths.length > 0
@@ -249,12 +409,191 @@ export function getTeacherOverview(
     group.students.push(studentRow);
   }
 
-  return [...byTeacher.values()]
-    .map((group) => ({
-      ...group,
-      students: group.students.sort((a, b) =>
-        a.studentName.localeCompare(b.studentName, "ja"),
-      ),
-    }))
-    .sort((a, b) => a.teacherName.localeCompare(b.teacherName, "ja"));
+  return sortTeacherGroups([...byTeacher.values()]);
+}
+
+export function getFinalStretchTeacherOverview(
+  viewerId: string,
+  memberRole: string | undefined,
+): TeacherOverviewTeacherGroup[] {
+  if (!canViewTeacherOverview(memberRole)) return [];
+
+  const db = getDb();
+  const campusScope = resolveTeacherOverviewCampusScope(viewerId, memberRole);
+  if (campusScope === undefined) return [];
+
+  const campusFilter = campusScope;
+  const assignmentRows = listActiveAssignmentRows().filter((row) =>
+    isFinalStretchGrade(row.grade),
+  );
+  const campusCache = buildStudentTeacherCampusCache(assignmentRows);
+
+  const byTeacher = new Map<string, TeacherOverviewTeacherGroup>();
+
+  for (const row of assignmentRows) {
+    const sheet = db
+      .select()
+      .from(schema.finalStretchSheets)
+      .where(
+        and(
+          eq(schema.finalStretchSheets.studentId, row.studentId),
+          eq(schema.finalStretchSheets.subject, row.subject),
+          eq(schema.finalStretchSheets.teacherId, row.teacherId),
+        ),
+      )
+      .orderBy(desc(schema.finalStretchSheets.updatedAt))
+      .all()[0];
+
+    const campusKey = `${row.studentId}:${row.teacherId}`;
+    const sheetCampus = resolveOverviewSheetCampus(
+      sheet?.campus,
+      row.teacherDefaultCampus,
+      row.studentCampus,
+      campusCache.get(campusKey),
+    );
+
+    if (!matchesTeacherOverviewCampusFilter(campusFilter, sheetCampus)) continue;
+
+    const rows =
+      sheet
+        ? db
+            .select()
+            .from(schema.finalStretchRows)
+            .where(eq(schema.finalStretchRows.sheetId, sheet.id))
+            .orderBy(
+              asc(schema.finalStretchRows.monthKey),
+              asc(schema.finalStretchRows.rowIndex),
+            )
+            .all()
+        : [];
+
+    const months = FINAL_STRETCH_MONTHS.map((month) => ({
+      yearMonth: month.key,
+      monthLabel: month.label,
+      filled: finalStretchMonthHasContent(rows, month.key),
+    }));
+
+    const studentRow: TeacherOverviewStudentRow = {
+      studentId: row.studentId,
+      studentName: row.studentName,
+      grade: row.grade,
+      subject: row.subject,
+      teacherId: row.teacherId,
+      sheetId: sheet?.id ?? null,
+      sheetCampus,
+      months,
+    };
+
+    const group = byTeacher.get(row.teacherId);
+    if (!group) {
+      byTeacher.set(row.teacherId, {
+        teacherId: row.teacherId,
+        teacherName: row.teacherName,
+        students: [studentRow],
+      });
+      continue;
+    }
+    group.students.push(studentRow);
+  }
+
+  return sortTeacherGroups([...byTeacher.values()]);
+}
+
+export function getCourseProposalTeacherOverview(
+  viewerId: string,
+  memberRole: string | undefined,
+  year: number,
+  season: CourseProposalSeason,
+): TeacherOverviewTeacherGroup[] {
+  if (!canViewTeacherOverview(memberRole)) return [];
+
+  const db = getDb();
+  const campusScope = resolveTeacherOverviewCampusScope(viewerId, memberRole);
+  if (campusScope === undefined) return [];
+
+  const campusFilter = campusScope;
+  const proposalSubjects = new Set<string>(COURSE_PROPOSAL_SUBJECTS);
+  const assignmentRows = listActiveAssignmentRows().filter((row) =>
+    proposalSubjects.has(row.subject),
+  );
+  const campusCache = buildStudentTeacherCampusCache(assignmentRows);
+
+  const byTeacher = new Map<string, TeacherOverviewTeacherGroup>();
+
+  for (const row of assignmentRows) {
+    const programSheet = db
+      .select({ campus: schema.programSheets.campus })
+      .from(schema.programSheets)
+      .where(
+        and(
+          eq(schema.programSheets.studentId, row.studentId),
+          eq(schema.programSheets.subject, row.subject),
+          eq(schema.programSheets.teacherId, row.teacherId),
+        ),
+      )
+      .orderBy(desc(schema.programSheets.updatedAt))
+      .all()[0];
+
+    const campusKey = `${row.studentId}:${row.teacherId}`;
+    const sheetCampus = resolveOverviewSheetCampus(
+      programSheet?.campus,
+      row.teacherDefaultCampus,
+      row.studentCampus,
+      campusCache.get(campusKey),
+    );
+
+    if (!matchesTeacherOverviewCampusFilter(campusFilter, sheetCampus)) continue;
+
+    const group =
+      byTeacher.get(row.teacherId) ??
+      (() => {
+        const created: TeacherOverviewTeacherGroup = {
+          teacherId: row.teacherId,
+          teacherName: row.teacherName,
+          students: [],
+        };
+        byTeacher.set(row.teacherId, created);
+        return created;
+      })();
+
+    let studentRow = group.students.find(
+      (student) => student.studentId === row.studentId,
+    );
+
+    if (!studentRow) {
+      const proposalSheet = db
+        .select()
+        .from(schema.courseProposalSheets)
+        .where(
+          and(
+            eq(schema.courseProposalSheets.studentId, row.studentId),
+            eq(schema.courseProposalSheets.year, year),
+            eq(schema.courseProposalSheets.season, season),
+          ),
+        )
+        .get();
+
+      const subjects = parseCourseProposalSubjectsJson(
+        proposalSheet?.subjectsJson,
+      );
+
+      studentRow = {
+        studentId: row.studentId,
+        studentName: row.studentName,
+        grade: row.grade,
+        subject: "",
+        teacherId: row.teacherId,
+        sheetId: proposalSheet?.id ?? null,
+        sheetCampus,
+        months: COURSE_PROPOSAL_SUBJECTS.map((subject) => ({
+          yearMonth: subject,
+          monthLabel: subject,
+          filled: courseProposalSubjectHasContent(subjects[subject]),
+        })),
+      };
+      group.students.push(studentRow);
+    }
+  }
+
+  return sortTeacherGroups([...byTeacher.values()]);
 }

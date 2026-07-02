@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { BulkPdfExport } from "@/components/BulkPdfExport";
 import { BulkFinalStretchPdfExport } from "@/components/BulkFinalStretchPdfExport";
+import { BulkCourseProposalPdfExport } from "@/components/BulkCourseProposalPdfExport";
 import { FinalStretchSheet } from "@/components/FinalStretchSheet";
 import { AppHeaderShell } from "@/components/AppHeaderShell";
 import { TeacherDefaultCampusField } from "@/components/TeacherDefaultCampus";
@@ -12,8 +13,9 @@ import { ProgramSheet } from "@/components/ProgramSheet";
 import { TeacherStudentBasicInfo } from "@/components/TeacherStudentBasicInfo";
 import { TeacherStudentList } from "@/components/TeacherStudentList";
 import { ScoreHistoryPanel } from "@/components/ScoreHistoryPanel";
+import { CourseProposalSheet } from "@/components/CourseProposalSheet";
 import { useAutoSave } from "@/hooks/use-auto-save";
-import { buildPdfFilename, buildFinalStretchPdfFilename, shiftYearMonth } from "@/lib/months";
+import { buildPdfFilename, buildFinalStretchPdfFilename, buildCourseProposalPdfFilename, shiftYearMonth } from "@/lib/months";
 import { savePdfFromResponse } from "@/lib/client-pdf-download";
 import type {
   MakerStudentListItem,
@@ -30,6 +32,7 @@ import { formatGraduationYear } from "@/lib/graduation";
 import { useTeacherDefaultCampus } from "@/components/TeacherDefaultCampus";
 import {
   buildMakerSearchParams,
+  makerStateFromSearchParams,
   resolveMakerStateFromSearchParams,
   type MakerTab,
 } from "@/lib/maker-url-state";
@@ -38,6 +41,15 @@ import {
   type FinalStretchRowData,
   type FinalStretchSheetData,
 } from "@/lib/final-stretch-types";
+import {
+  COURSE_PROPOSAL_SEASON_LABELS,
+  COURSE_PROPOSAL_SEASONS,
+  defaultCourseProposalYear,
+  type CourseProposalSeason,
+  type CourseProposalSheetData,
+  type CourseProposalSubject,
+  type CourseProposalSubjectData,
+} from "@/lib/course-proposal-types";
 
 const navArrowBtnClass =
   "border-0 bg-transparent p-0 text-[10px] leading-none text-gray-600 hover:text-gray-900";
@@ -78,6 +90,7 @@ export function MakerClient({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const urlStudentParam = searchParams.get("student")?.trim() ?? "";
   const initialMakerStateRef = useRef<ReturnType<
     typeof resolveMakerStateFromSearchParams
   > | null>(null);
@@ -105,6 +118,14 @@ export function MakerClient({
   >([]);
   const [scoreHistoryLoading, setScoreHistoryLoading] = useState(false);
   const [scoreHistoryError, setScoreHistoryError] = useState("");
+  const [courseProposalSheet, setCourseProposalSheet] =
+    useState<CourseProposalSheetData | null>(null);
+  const [courseProposalYear, setCourseProposalYear] = useState(
+    initialMakerState.courseProposalYear,
+  );
+  const [courseProposalSeason, setCourseProposalSeason] =
+    useState<CourseProposalSeason>(initialMakerState.courseProposalSeason);
+  const [courseProposalLoadError, setCourseProposalLoadError] = useState("");
   const [allTestsForMonth, setAllTestsForMonth] = useState<
     Record<string, { id: string; displayText: string }[]>
   >({});
@@ -123,6 +144,8 @@ export function MakerClient({
   >([]);
   const [saveRevision, setSaveRevision] = useState(0);
   const [finalStretchSaveRevision, setFinalStretchSaveRevision] = useState(0);
+  const [courseProposalSaveRevision, setCourseProposalSaveRevision] =
+    useState(0);
   const [finalStretchTargetSchoolRevision, setFinalStretchTargetSchoolRevision] =
     useState(0);
   const [exportingPdf, setExportingPdf] = useState(false);
@@ -130,14 +153,18 @@ export function MakerClient({
   const [pdfError, setPdfError] = useState("");
   const sheetRef = useRef<ProgramSheetData | null>(null);
   const finalStretchSheetRef = useRef<FinalStretchSheetData | null>(null);
+  const courseProposalSheetRef = useRef<CourseProposalSheetData | null>(null);
   const basicSaveFlushRef = useRef<(() => Promise<boolean>) | null>(null);
   const loadSeqRef = useRef(0);
   const finalStretchLoadSeqRef = useRef(0);
   const scoreHistoryLoadSeqRef = useRef(0);
+  const courseProposalLoadSeqRef = useRef(0);
 
   const bumpSave = () => setSaveRevision((r) => r + 1);
   const bumpFinalStretchSave = () =>
     setFinalStretchSaveRevision((r) => r + 1);
+  const bumpCourseProposalSave = () =>
+    setCourseProposalSaveRevision((r) => r + 1);
   const bumpFinalStretchTargetSchoolSave = () =>
     setFinalStretchTargetSchoolRevision((r) => r + 1);
 
@@ -150,11 +177,56 @@ export function MakerClient({
   }, [finalStretchSheet]);
 
   useEffect(() => {
+    courseProposalSheetRef.current = courseProposalSheet;
+  }, [courseProposalSheet]);
+
+  useEffect(() => {
+    if (!pdfMessage) return;
+    const timer = window.setTimeout(() => setPdfMessage(""), 5000);
+    return () => window.clearTimeout(timer);
+  }, [pdfMessage]);
+
+  useEffect(() => {
+    if (courseProposalYear >= 2000 && courseProposalYear <= 2100) return;
+    setCourseProposalYear(defaultCourseProposalYear());
+  }, [courseProposalYear]);
+
+  useEffect(() => {
+    const resolved = makerStateFromSearchParams(
+      assignments,
+      canViewTeacherOverview,
+      searchParams,
+    );
+    setStudentId((prev) =>
+      resolved.studentId !== prev ? resolved.studentId : prev,
+    );
+    setSubject((prev) => (resolved.subject !== prev ? resolved.subject : prev));
+    setActiveTab((prev) =>
+      resolved.activeTab !== prev ? resolved.activeTab : prev,
+    );
+    setStartYearMonth((prev) =>
+      resolved.startYearMonth !== prev ? resolved.startYearMonth : prev,
+    );
+    setCourseProposalYear((prev) =>
+      resolved.courseProposalYear !== prev
+        ? resolved.courseProposalYear
+        : prev,
+    );
+    setCourseProposalSeason((prev) =>
+      resolved.courseProposalSeason !== prev
+        ? resolved.courseProposalSeason
+        : prev,
+    );
+  }, [assignments, canViewTeacherOverview, searchParams]);
+
+  useEffect(() => {
     const params = buildMakerSearchParams({
       studentId,
       subject,
       activeTab,
       startYearMonth,
+      courseProposalYear,
+      courseProposalSeason,
     });
     const query = params.toString();
     const nextUrl = query ? `${pathname}?${query}` : pathname;
@@ -168,6 +240,8 @@ export function MakerClient({
     subject,
     activeTab,
     startYearMonth,
+    courseProposalYear,
+    courseProposalSeason,
     pathname,
     router,
     searchParams,
@@ -292,15 +366,24 @@ export function MakerClient({
   const showFinalStretchTab =
     !isNewStudent && isFinalStretchGrade(selectedStudentGrade);
 
-  const subjectOptions = useMemo(
-    () =>
-      isNewStudent
-        ? []
-        : assignments
-            .filter((a) => a.studentId === studentId)
-            .map((a) => a.subject),
-    [assignments, studentId, isNewStudent],
-  );
+  const subjectOptions = useMemo(() => {
+    if (isNewStudent) return [];
+    const unique = [
+      ...new Set(
+        assignments
+          .filter((a) => a.studentId === studentId)
+          .map((a) => a.subject),
+      ),
+    ];
+    if (
+      canViewTeacherOverview &&
+      subject &&
+      !unique.includes(subject)
+    ) {
+      return [...unique, subject];
+    }
+    return unique;
+  }, [assignments, studentId, isNewStudent, canViewTeacherOverview, subject]);
 
   const registerStudentOption = useCallback(
     (summary: { id: string; name: string; grade: string }) => {
@@ -545,6 +628,72 @@ export function MakerClient({
     }
   }, [studentId]);
 
+  const saveCourseProposal = useCallback(async (): Promise<boolean> => {
+    const current = courseProposalSheetRef.current;
+    if (!current) return false;
+
+    setSaving(true);
+    setSwitchError("");
+
+    const res = await fetch(`/api/programs/course-proposal/${current.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        subjects: current.subjects,
+      }),
+    });
+
+    setSaving(false);
+    return res.ok;
+  }, []);
+
+  const {
+    flush: flushCourseProposalSave,
+    statusLabel: courseProposalAutoSaveLabel,
+  } = useAutoSave(saveCourseProposal, courseProposalSaveRevision);
+
+  const loadCourseProposal = useCallback(async () => {
+    if (!studentId || studentId === NEW_STUDENT_ID) {
+      setCourseProposalSheet(null);
+      return;
+    }
+
+    const requestId = ++courseProposalLoadSeqRef.current;
+    setCourseProposalLoadError("");
+
+    try {
+      const res = await fetch("/api/programs/course-proposal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          studentId,
+          teacherId,
+          year: courseProposalYear,
+          season: courseProposalSeason,
+        }),
+      });
+
+      if (requestId !== courseProposalLoadSeqRef.current) return;
+
+      if (!res.ok) {
+        setCourseProposalSheet(null);
+        setCourseProposalLoadError("講習提案書の読み込みに失敗しました");
+        return;
+      }
+
+      const data = (await res.json()) as { sheet: CourseProposalSheetData };
+      if (requestId !== courseProposalLoadSeqRef.current) return;
+
+      setCourseProposalSheet(data.sheet);
+      setCourseProposalSaveRevision(0);
+      setCourseProposalLoadError("");
+    } catch {
+      if (requestId !== courseProposalLoadSeqRef.current) return;
+      setCourseProposalSheet(null);
+      setCourseProposalLoadError("講習提案書の読み込みに失敗しました");
+    }
+  }, [studentId, teacherId, courseProposalYear, courseProposalSeason]);
+
   const loadSheet = useCallback(async () => {
     if (!studentId || !subject || studentId === NEW_STUDENT_ID) {
       setInitialLoading(false);
@@ -590,6 +739,11 @@ export function MakerClient({
       if (requestId !== loadSeqRef.current) return;
 
       setSheet(data.sheet);
+      registerStudentOption({
+        id: data.sheet.student.id,
+        name: data.sheet.student.name,
+        grade: data.sheet.student.grade,
+      });
       setStartYearMonth(data.sheet.startYearMonth);
       setAllTestsForMonth(data.allTestsForMonth ?? {});
       setSaveRevision(0);
@@ -608,7 +762,7 @@ export function MakerClient({
         setRefreshing(false);
       }
     }
-  }, [studentId, subject, teacherId, startYearMonth]);
+  }, [studentId, subject, teacherId, startYearMonth, registerStudentOption]);
 
   useEffect(() => {
     loadSheet();
@@ -627,6 +781,12 @@ export function MakerClient({
   }, [activeTab, loadScoreHistory]);
 
   useEffect(() => {
+    if (activeTab === "course-proposal") {
+      void loadCourseProposal();
+    }
+  }, [activeTab, loadCourseProposal]);
+
+  useEffect(() => {
     if (activeTab === "final-stretch" && !showFinalStretchTab) {
       setActiveTab("program");
     }
@@ -642,13 +802,20 @@ export function MakerClient({
   useEffect(() => {
     if (studentId === NEW_STUDENT_ID) return;
     if (
+      canViewTeacherOverview &&
+      urlStudentParam &&
+      urlStudentParam === studentId
+    ) {
+      return;
+    }
+    if (
       studentOptions.length > 0 &&
       studentId &&
       !studentOptions.some((s) => s.id === studentId)
     ) {
       setStudentId(studentOptions[0]?.id ?? "");
     }
-  }, [studentOptions, studentId]);
+  }, [studentOptions, studentId, canViewTeacherOverview, urlStudentParam]);
 
   useEffect(() => {
     if (subjectOptions.length > 0 && !subjectOptions.includes(subject)) {
@@ -659,11 +826,12 @@ export function MakerClient({
   const flushActiveTab = useCallback(async (): Promise<boolean> => {
     if (activeTab === "program") return flushSave();
     if (activeTab === "final-stretch") return flushFinalStretchAll();
+    if (activeTab === "course-proposal") return flushCourseProposalSave();
     if (activeTab === "basic") {
       return (await basicSaveFlushRef.current?.()) ?? true;
     }
     return true;
-  }, [activeTab, flushSave, flushFinalStretchAll]);
+  }, [activeTab, flushSave, flushFinalStretchAll, flushCourseProposalSave]);
 
   const switchWithSave = async (action: () => void) => {
     const saved = await flushActiveTab();
@@ -747,7 +915,21 @@ export function MakerClient({
         },
       };
     });
-  }, []);
+    setCourseProposalSheet((prev) => {
+      if (!prev || prev.studentId !== info.id) return prev;
+      return {
+        ...prev,
+        student: {
+          name: info.name,
+          gender: info.gender,
+          grade: info.grade,
+        },
+      };
+    });
+    if (courseProposalSheetRef.current?.studentId === info.id) {
+      void loadCourseProposal();
+    }
+  }, [loadCourseProposal]);
 
   const handleCampusChange = (value: string) => {
     bumpSave();
@@ -984,9 +1166,7 @@ export function MakerClient({
         return;
       }
 
-      setPdfMessage(
-        `PDFをダウンロードフォルダに保存しました: ${result.fileName}`,
-      );
+      setPdfMessage("PDFを保存しました");
     } catch {
       setPdfError("PDFの作成に失敗しました");
     } finally {
@@ -1018,12 +1198,76 @@ export function MakerClient({
         return;
       }
 
-      setPdfMessage(
-        `PDFをダウンロードフォルダに保存しました: ${result.fileName}`,
-      );
+      setPdfMessage("PDFを保存しました");
     } catch {
       setPdfError("PDFの作成に失敗しました");
     } finally {
+      setExportingPdf(false);
+    }
+  };
+
+  const handleCourseProposalPrint = async () => {
+    if (!courseProposalSheet) return;
+    const saved = await flushCourseProposalSave();
+    if (!saved) return;
+
+    const url = `/programs/course-proposal/${courseProposalSheet.id}/print`;
+    const printWindow = window.open(url, "_blank", "noopener,noreferrer");
+    if (!printWindow) {
+      setPdfError("印刷ウィンドウを開けませんでした");
+      return;
+    }
+
+    printWindow.addEventListener(
+      "load",
+      () => {
+        printWindow.document.title = courseProposalPdfFilename;
+        printWindow.focus();
+        printWindow.print();
+      },
+      { once: true },
+    );
+  };
+
+  const handleCourseProposalSavePdf = async () => {
+    if (!courseProposalSheet) return;
+    setExportingPdf(true);
+    setPdfError("");
+    setPdfMessage("");
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 130_000);
+
+    try {
+      const saved = await flushCourseProposalSave();
+      if (!saved) {
+        setPdfError("保存に失敗したためPDFを作成できませんでした");
+        return;
+      }
+
+      const res = await fetch(
+        `/api/programs/course-proposal/${courseProposalSheet.id}/pdf`,
+        { method: "POST", signal: controller.signal },
+      );
+      const result = await savePdfFromResponse(
+        res,
+        `${courseProposalPdfFilename}.pdf`,
+      );
+
+      if (!result.ok) {
+        setPdfError(result.error);
+        return;
+      }
+
+      setPdfMessage("PDFを保存しました");
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        setPdfError("PDFの作成がタイムアウトしました。しばらく待ってから再度お試しください");
+        return;
+      }
+      setPdfError("PDFの作成に失敗しました");
+    } finally {
+      window.clearTimeout(timeoutId);
       setExportingPdf(false);
     }
   };
@@ -1049,13 +1293,24 @@ export function MakerClient({
       })
     : "";
 
+  const courseProposalPdfFilename = courseProposalSheet
+    ? buildCourseProposalPdfFilename({
+        year: courseProposalSheet.year,
+        season: courseProposalSheet.season,
+        studentName: courseProposalSheet.student.name,
+        gender: courseProposalSheet.student.gender,
+      })
+    : "";
+
   const showProgramLoading =
     initialLoading && !sheet && activeTab === "program" && !isNewStudent;
 
   const programBlocked =
     activeTab === "program" &&
     !isNewStudent &&
-    ((loadError && !sheet) || !sheet || !selectedAssignment);
+    ((loadError && !sheet) ||
+      !sheet ||
+      (!canViewTeacherOverview && !selectedAssignment));
 
   const makerHeaderProps = {
     title: "プログラムメーカー",
@@ -1146,6 +1401,8 @@ export function MakerClient({
           <BulkPdfExport assignments={assignments} />
         ) : activeTab === "bulk-final-stretch-pdf" ? (
           <BulkFinalStretchPdfExport assignments={assignments} />
+        ) : activeTab === "bulk-course-proposal-pdf" ? (
+          <BulkCourseProposalPdfExport assignments={assignments} />
         ) : activeTab === "by-teacher" && canViewTeacherOverview ? (
           <TeacherOverviewTab showAdminSearch={showAdminTeacherSearch} />
         ) : activeTab === "program" && programBlocked ? (
@@ -1251,11 +1508,56 @@ export function MakerClient({
             loading={scoreHistoryLoading}
             error={scoreHistoryError}
           />
+        ) : activeTab === "course-proposal" ? (
+          isNewStudent ? (
+            <div className="p-8 text-center text-sm text-gray-500">
+              生徒を登録してから講習提案書を作成できます
+            </div>
+          ) : courseProposalLoadError ? (
+            <div className="p-8 text-center text-sm text-red-600">
+              {courseProposalLoadError}
+            </div>
+          ) : courseProposalSheet ? (
+            <CourseProposalSheet
+              sheet={courseProposalSheet}
+              onSubjectChange={(
+                subject: CourseProposalSubject,
+                data: CourseProposalSubjectData,
+              ) => {
+                if (!courseProposalSheet.editableSubjects[subject]) return;
+                setCourseProposalSheet((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        subjects: {
+                          ...prev.subjects,
+                          [subject]: data,
+                        },
+                      }
+                    : prev,
+                );
+                bumpCourseProposalSave();
+              }}
+            />
+          ) : (
+            <div className="p-8 text-center text-gray-500">読み込み中…</div>
+          )
         ) : null}
       </main>
 
       <footer className="screen-only sticky bottom-0 z-[100] border-t bg-white px-4 py-4 shadow-lg">
         <div className="mb-3 flex gap-2 border-b pb-3">
+          <button
+            type="button"
+            className={`rounded px-4 py-2 text-sm ${
+              activeTab === "basic"
+                ? "bg-[#1e3a5f] text-white"
+                : "border bg-white text-gray-700 hover:bg-gray-50"
+            }`}
+            onClick={() => void switchTab("basic")}
+          >
+            生徒基本情報
+          </button>
           <button
             type="button"
             className={`rounded px-4 py-2 text-sm ${
@@ -1265,7 +1567,7 @@ export function MakerClient({
             }`}
             onClick={() => void switchTab("program")}
           >
-            プログラムシート
+            合格プログラム
           </button>
           {showFinalStretchTab ? (
             <button
@@ -1283,13 +1585,13 @@ export function MakerClient({
           <button
             type="button"
             className={`rounded px-4 py-2 text-sm ${
-              activeTab === "basic"
+              activeTab === "course-proposal"
                 ? "bg-[#1e3a5f] text-white"
                 : "border bg-white text-gray-700 hover:bg-gray-50"
             }`}
-            onClick={() => void switchTab("basic")}
+            onClick={() => void switchTab("course-proposal")}
           >
-            生徒基本情報
+            講習提案書
           </button>
           <button
             type="button"
@@ -1305,6 +1607,7 @@ export function MakerClient({
         </div>
         {activeTab !== "bulk-pdf" &&
         activeTab !== "bulk-final-stretch-pdf" &&
+        activeTab !== "bulk-course-proposal-pdf" &&
         activeTab !== "by-teacher" ? (
         <div className="flex w-full flex-wrap items-end gap-4">
           <label className="text-sm">
@@ -1429,6 +1732,44 @@ export function MakerClient({
           </label>
           )}
 
+          {activeTab === "course-proposal" && !isNewStudent && (
+            <>
+              <label className="text-sm">
+                年度
+                <input
+                  type="number"
+                  min={2000}
+                  max={2100}
+                  className="ml-2 w-24 rounded border px-2 py-1"
+                  value={courseProposalYear}
+                  onChange={(e) => {
+                    const next = Number(e.target.value);
+                    if (!Number.isFinite(next)) return;
+                    void switchWithSave(() => setCourseProposalYear(next));
+                  }}
+                />
+              </label>
+              <label className="text-sm">
+                講習期
+                <select
+                  className="ml-2 rounded border px-2 py-1"
+                  value={courseProposalSeason}
+                  onChange={(e) => {
+                    const next = e.target.value as CourseProposalSeason;
+                    if (!COURSE_PROPOSAL_SEASONS.includes(next)) return;
+                    void switchWithSave(() => setCourseProposalSeason(next));
+                  }}
+                >
+                  {COURSE_PROPOSAL_SEASONS.map((season) => (
+                    <option key={season} value={season}>
+                      {COURSE_PROPOSAL_SEASON_LABELS[season]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          )}
+
           <div className="flex-1 text-xs text-gray-500">
             {activeTab === "list" ? (
               <div>担当生徒の一覧です。氏名・担当科目をクリックして開けます。</div>
@@ -1436,45 +1777,55 @@ export function MakerClient({
               <div>通塾・志望校・開始時成績・目標は全科目で共有されます</div>
             ) : activeTab === "score-history" ? (
               <div>チェックした模試の偏差値を左のグラフに表示します（古い順→新しい順）</div>
+            ) : activeTab === "course-proposal" ? (
+              <div>年度・講習期を選び、各科目の内容・提案コマ数を入力します（担当科目のみ編集可。管理者・校長は全科目）</div>
             ) : null}
           </div>
 
-          {(activeTab === "program"
-            ? autoSaveLabel
-            : activeTab === "final-stretch"
-              ? finalStretchAutoSaveLabel
-              : null) ||
-          switchError ||
-          exportingPdf ||
-          pdfMessage ||
-          pdfError ? (
-            <span
-              className={`text-sm ${
-                switchError || pdfError
-                  ? "text-red-600"
-                  : exportingPdf
-                    ? "text-gray-500"
-                    : pdfMessage
-                      ? "text-green-600"
-                      : saving
-                        ? "text-gray-500"
-                        : "text-green-600"
-              }`}
-            >
-              {switchError ||
-                pdfError ||
-                (exportingPdf ? "保存中…" : null) ||
-                pdfMessage ||
-                (activeTab === "program"
-                  ? autoSaveLabel
-                  : activeTab === "final-stretch"
-                    ? finalStretchAutoSaveLabel
-                    : null)}
-            </span>
-          ) : null}
+          <div className="ml-auto flex flex-shrink-0 flex-wrap items-center justify-end gap-x-3 gap-y-2">
+            {(activeTab === "program"
+              ? autoSaveLabel
+              : activeTab === "final-stretch"
+                ? finalStretchAutoSaveLabel
+                : activeTab === "course-proposal"
+                  ? courseProposalAutoSaveLabel
+                  : null) ||
+            switchError ||
+            exportingPdf ||
+            pdfMessage ||
+            pdfError ? (
+              <span
+                className={`max-w-[10rem] truncate text-sm sm:max-w-[14rem] ${
+                  switchError || pdfError
+                    ? "text-red-600"
+                    : exportingPdf
+                      ? "text-gray-500"
+                      : pdfMessage
+                        ? "text-green-600"
+                        : saving
+                          ? "text-gray-500"
+                          : "text-green-600"
+                }`}
+                title={
+                  pdfMessage || pdfError || switchError || undefined
+                }
+              >
+                {switchError ||
+                  pdfError ||
+                  (exportingPdf ? "保存中…" : null) ||
+                  pdfMessage ||
+                  (activeTab === "program"
+                    ? autoSaveLabel
+                    : activeTab === "final-stretch"
+                      ? finalStretchAutoSaveLabel
+                      : activeTab === "course-proposal"
+                        ? courseProposalAutoSaveLabel
+                        : null)}
+              </span>
+            ) : null}
 
           {activeTab === "program" && sheet && (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-shrink-0 flex-wrap gap-2">
               <button
                 type="button"
                 onClick={() => void handlePrint()}
@@ -1502,7 +1853,7 @@ export function MakerClient({
             </div>
           )}
           {activeTab === "final-stretch" && finalStretchSheet && (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-shrink-0 flex-wrap gap-2">
               <button
                 type="button"
                 onClick={() => void handleFinalStretchPrint()}
@@ -1529,12 +1880,42 @@ export function MakerClient({
               </button>
             </div>
           )}
+          {activeTab === "course-proposal" && courseProposalSheet && (
+            <div className="flex flex-shrink-0 flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void handleCourseProposalPrint()}
+                disabled={exportingPdf}
+                className="rounded border border-[#1e3a5f] bg-white px-4 py-2 text-sm text-[#1e3a5f] hover:bg-gray-50 disabled:opacity-50"
+              >
+                印刷
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleCourseProposalSavePdf()}
+                disabled={exportingPdf}
+                className="rounded bg-[#1e3a5f] px-4 py-2 text-sm text-white hover:bg-[#2a4f7a] disabled:opacity-50"
+              >
+                {exportingPdf ? "保存中…" : "PDF保存"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void switchTab("bulk-course-proposal-pdf")}
+                disabled={exportingPdf}
+                className="rounded border border-[#1e3a5f] bg-white px-4 py-2 text-sm text-[#1e3a5f] hover:bg-gray-50 disabled:opacity-50"
+              >
+                PDF一括作成
+              </button>
+            </div>
+          )}
+          </div>
         </div>
         ) : (
           <div className="text-xs text-gray-500">
             {activeTab === "by-teacher"
-              ? "講師ごとのプログラムシート作成状況を確認できます。"
-              : activeTab === "bulk-final-stretch-pdf"
+              ? "合格プログラム・直前期シート・講習提案書の講師別記入状況を確認できます。"
+              : activeTab === "bulk-final-stretch-pdf" ||
+                  activeTab === "bulk-course-proposal-pdf"
                 ? "PDFはダウンロードフォルダに保存されます。"
                 : "PDFはダウンロードフォルダに保存されます。"}
           </div>

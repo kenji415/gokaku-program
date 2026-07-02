@@ -17,6 +17,19 @@ export function gradeSortRank(grade: string): number {
   return idx >= 0 ? idx : GRADES.length;
 }
 
+/** 講習提案書など帳票向けの学年表記（例: 5年 → 小学5年） */
+export function formatGradeDisplay(grade: string): string {
+  const trimmed = grade.trim();
+  if (!trimmed) return "";
+  if (trimmed.startsWith("小学") || trimmed.startsWith("中学")) {
+    return trimmed;
+  }
+  if (/^[1-6]年$/.test(trimmed)) {
+    return `小学${trimmed}`;
+  }
+  return trimmed;
+}
+
 export function compareByGradeThenName(
   a: { grade: string; name: string },
   b: { grade: string; name: string },

@@ -33,25 +33,32 @@ export function useAutoSave(
   const { enabled = true, delayMs = 800, skipInitial = true } = options;
   const [state, setState] = useState<AutoSaveState>("idle");
   const saveFnRef = useRef(saveFn);
-  const savingLock = useRef(false);
+  const pendingFlushRef = useRef<Promise<boolean> | null>(null);
   const skipRef = useRef(skipInitial);
 
   saveFnRef.current = saveFn;
 
   const flush = useCallback(async (): Promise<boolean> => {
-    if (savingLock.current) return true;
-    savingLock.current = true;
-    setState("saving");
-    try {
-      const ok = await saveFnRef.current();
-      setState(ok ? "saved" : "error");
-      return ok;
-    } catch {
-      setState("error");
-      return false;
-    } finally {
-      savingLock.current = false;
+    if (pendingFlushRef.current) {
+      return pendingFlushRef.current;
     }
+
+    const pending = (async () => {
+      setState("saving");
+      try {
+        const ok = await saveFnRef.current();
+        setState(ok ? "saved" : "error");
+        return ok;
+      } catch {
+        setState("error");
+        return false;
+      } finally {
+        pendingFlushRef.current = null;
+      }
+    })();
+
+    pendingFlushRef.current = pending;
+    return pending;
   }, []);
 
   useEffect(() => {

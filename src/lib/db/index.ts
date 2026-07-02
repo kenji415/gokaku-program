@@ -168,6 +168,29 @@ function ensureSchema(sqlite: Database.Database) {
     );
   }
 
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS course_proposal_sheets (
+      id TEXT PRIMARY KEY,
+      student_id TEXT NOT NULL REFERENCES students(id),
+      teacher_id TEXT NOT NULL REFERENCES users(id),
+      year INTEGER NOT NULL,
+      season TEXT NOT NULL,
+      subjects_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(student_id, year, season)
+    );
+  `);
+
+  const courseProposalSheetColumns = sqlite
+    .prepare("PRAGMA table_info(course_proposal_sheets)")
+    .all() as { name: string }[];
+  if (!courseProposalSheetColumns.some((c) => c.name === "pdf_exported_at")) {
+    sqlite.exec(
+      `ALTER TABLE course_proposal_sheets ADD COLUMN pdf_exported_at TEXT`,
+    );
+  }
+
   const testCourseCleanup = sqlite
     .prepare(`SELECT value FROM app_meta WHERE key = 'test_course_link_cleanup'`)
     .get() as { value: string } | undefined;

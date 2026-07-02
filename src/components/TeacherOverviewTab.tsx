@@ -4,25 +4,58 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { NameSearchInput } from "@/components/NameSearchInput";
 import { EXAM_DR_CAMPUS_NAMES } from "@/lib/constants";
+import {
+  COURSE_PROPOSAL_SEASON_LABELS,
+  COURSE_PROPOSAL_SEASONS,
+  defaultCourseProposalSeason,
+  defaultCourseProposalYear,
+  type CourseProposalSeason,
+} from "@/lib/course-proposal-types";
 import { formatYearMonth } from "@/lib/months";
 import { matchesNameQuery } from "@/lib/name-search";
 import type {
-  TeacherOverviewTeacherGroup,
+  TeacherOverviewSheetKind,
   TeacherOverviewStudentRow,
+  TeacherOverviewTeacherGroup,
 } from "@/lib/teacher-overview";
 
 type Props = {
   showAdminSearch?: boolean;
 };
 
+const SHEET_KIND_OPTIONS: {
+  kind: TeacherOverviewSheetKind;
+  label: string;
+}[] = [
+  { kind: "program", label: "合格プログラム" },
+  { kind: "final-stretch", label: "直前期シート" },
+  { kind: "course-proposal", label: "講習提案書" },
+];
+
 function currentYearMonth(): string {
   const now = new Date();
   return formatYearMonth(now.getFullYear(), now.getMonth() + 1);
 }
 
+function overviewDescription(kind: TeacherOverviewSheetKind): string {
+  switch (kind) {
+    case "program":
+      return "講師ごとの担当生徒と、開始月から6か月分の月ボックス入力状況（〇＝入力あり）を確認できます。氏名をクリックすると合格プログラムを開きます。";
+    case "final-stretch":
+      return "講師ごとの担当6年生と、11月・12月・1月の入力状況（〇＝入力あり）を確認できます。氏名をクリックすると直前期シートを開きます。";
+    case "course-proposal":
+      return "講師ごとの担当生徒と、各科目の講習内容・提案コマ数の入力状況（〇＝入力あり）を確認できます。氏名をクリックすると講習提案書を開きます。";
+  }
+}
+
 export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
   const router = useRouter();
+  const [sheetKind, setSheetKind] = useState<TeacherOverviewSheetKind>("program");
   const [startYearMonth, setStartYearMonth] = useState(currentYearMonth);
+  const [proposalYear, setProposalYear] = useState(defaultCourseProposalYear());
+  const [proposalSeason, setProposalSeason] = useState<CourseProposalSeason>(
+    defaultCourseProposalSeason(),
+  );
   const [teachers, setTeachers] = useState<TeacherOverviewTeacherGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -31,7 +64,7 @@ export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
   const [studentQuery, setStudentQuery] = useState("");
   const [campusFilter, setCampusFilter] = useState("");
 
-  const monthHeaders = useMemo(
+  const columnHeaders = useMemo(
     () => teachers[0]?.students[0]?.months ?? [],
     [teachers],
   );
@@ -61,7 +94,9 @@ export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
         students: teacher.students.filter(
           (student) =>
             matchesNameQuery(student.studentName, studentQuery) &&
-            (!campusFilter || student.sheetCampus === campusFilter),
+            (!campusFilter ||
+              !student.sheetCampus ||
+              student.sheetCampus === campusFilter),
         ),
       }))
       .filter((teacher) => teacher.students.length > 0);
@@ -76,9 +111,14 @@ export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
     setLoading(true);
     setError("");
 
-    fetch(
-      `/api/programs/teacher-overview?startYearMonth=${encodeURIComponent(startYearMonth)}`,
-    )
+    const url =
+      sheetKind === "program"
+        ? `/api/programs/teacher-overview?startYearMonth=${encodeURIComponent(startYearMonth)}`
+        : sheetKind === "final-stretch"
+          ? "/api/programs/final-stretch/teacher-overview"
+          : `/api/programs/course-proposal/teacher-overview?year=${proposalYear}&season=${encodeURIComponent(proposalSeason)}`;
+
+    fetch(url)
       .then(async (res) => {
         if (!res.ok) throw new Error("load failed");
         return res.json() as Promise<{
@@ -98,37 +138,88 @@ export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [startYearMonth]);
+  }, [sheetKind, startYearMonth, proposalYear, proposalSeason]);
 
   const openSheet = async (row: TeacherOverviewStudentRow) => {
-    const key = `${row.teacherId}:${row.studentId}:${row.subject}`;
-    setOpeningId(key);
+    const rowKey =
+      sheetKind === "course-proposal"
+        ? `${row.teacherId}:${row.studentId}`
+        : `${row.teacherId}:${row.studentId}:${row.subject}`;
+    setOpeningId(rowKey);
+
     try {
-      if (!row.sheetId) {
-        const res = await fetch("/api/programs", {
+      if (sheetKind === "program") {
+        if (!row.sheetId) {
+          const res = await fetch("/api/programs", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              studentId: row.studentId,
+              subject: row.subject,
+              teacherId: row.teacherId,
+              startYearMonth,
+            }),
+          });
+          if (!res.ok) return;
+        }
+
+        const params = new URLSearchParams({
+          student: row.studentId,
+          subject: row.subject,
+          month: startYearMonth,
+          tab: "program",
+        });
+        router.push(`/maker?${params.toString()}`);
+        return;
+      }
+
+      if (sheetKind === "final-stretch") {
+        const res = await fetch("/api/programs/final-stretch", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             studentId: row.studentId,
             subject: row.subject,
             teacherId: row.teacherId,
-            startYearMonth,
           }),
         });
         if (!res.ok) return;
+
+        const params = new URLSearchParams({
+          student: row.studentId,
+          subject: row.subject,
+          tab: "final-stretch",
+        });
+        router.push(`/maker?${params.toString()}`);
+        return;
       }
+
+      const res = await fetch("/api/programs/course-proposal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          studentId: row.studentId,
+          teacherId: row.teacherId,
+          year: proposalYear,
+          season: proposalSeason,
+        }),
+      });
+      if (!res.ok) return;
 
       const params = new URLSearchParams({
         student: row.studentId,
-        subject: row.subject,
-        month: startYearMonth,
-        tab: "program",
+        tab: "course-proposal",
+        proposalYear: String(proposalYear),
+        proposalSeason: proposalSeason,
       });
+      if (row.subject) params.set("subject", row.subject);
       router.push(`/maker?${params.toString()}`);
     } finally {
       setOpeningId(null);
     }
   };
+
+  const showSubjectColumn = sheetKind !== "course-proposal";
 
   return (
     <div className="mx-auto max-w-6xl px-2">
@@ -136,8 +227,24 @@ export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0 flex-1">
             <h2 className="text-lg font-semibold text-gray-900">講師別</h2>
-            <p className="mt-1 text-xs text-gray-500">
-              講師ごとの担当生徒と、開始月から6か月分の月ボックス入力状況（〇＝入力あり）を確認できます。氏名をクリックするとプログラムシートを開きます。
+            <div className="mt-3 flex flex-wrap gap-2">
+              {SHEET_KIND_OPTIONS.map((option) => (
+                <button
+                  key={option.kind}
+                  type="button"
+                  className={`rounded px-4 py-2 text-sm ${
+                    sheetKind === option.kind
+                      ? "bg-[#1e3a5f] text-white"
+                      : "border bg-white text-gray-700 hover:bg-gray-50"
+                  }`}
+                  onClick={() => setSheetKind(option.kind)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-gray-500">
+              {overviewDescription(sheetKind)}
             </p>
             {showAdminSearch ? (
               <div className="mt-3 flex flex-wrap items-end gap-3 rounded border border-gray-200 bg-gray-50 p-3">
@@ -188,17 +295,55 @@ export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
               </div>
             ) : null}
           </div>
-          <label className="shrink-0 text-sm">
-            開始月
-            <input
-              type="month"
-              className="ml-2 rounded border px-2 py-1"
-              value={startYearMonth}
-              onChange={(e) => {
-                if (e.target.value) setStartYearMonth(e.target.value);
-              }}
-            />
-          </label>
+          {sheetKind === "program" ? (
+            <label className="shrink-0 text-sm">
+              開始月
+              <input
+                type="month"
+                className="ml-2 rounded border px-2 py-1"
+                value={startYearMonth}
+                onChange={(e) => {
+                  if (e.target.value) setStartYearMonth(e.target.value);
+                }}
+              />
+            </label>
+          ) : sheetKind === "course-proposal" ? (
+            <div className="flex shrink-0 flex-wrap items-end gap-3">
+              <label className="text-sm">
+                年度
+                <input
+                  type="number"
+                  min={2000}
+                  max={2100}
+                  className="ml-2 w-24 rounded border px-2 py-1"
+                  value={proposalYear}
+                  onChange={(e) => {
+                    const next = Number(e.target.value);
+                    if (!Number.isFinite(next)) return;
+                    setProposalYear(next);
+                  }}
+                />
+              </label>
+              <label className="text-sm">
+                講習期
+                <select
+                  className="ml-2 rounded border px-2 py-1"
+                  value={proposalSeason}
+                  onChange={(e) => {
+                    const next = e.target.value as CourseProposalSeason;
+                    if (!COURSE_PROPOSAL_SEASONS.includes(next)) return;
+                    setProposalSeason(next);
+                  }}
+                >
+                  {COURSE_PROPOSAL_SEASONS.map((season) => (
+                    <option key={season} value={season}>
+                      {COURSE_PROPOSAL_SEASON_LABELS[season]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          ) : null}
         </div>
 
         {loading ? (
@@ -223,21 +368,26 @@ export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
                     <thead>
                       <tr className="bg-gray-50 text-left text-xs text-gray-600">
                         <th className="px-2 py-2 font-medium">生徒</th>
-                        <th className="px-2 py-2 font-medium">科目</th>
+                        {showSubjectColumn ? (
+                          <th className="px-2 py-2 font-medium">科目</th>
+                        ) : null}
                         <th className="px-2 py-2 font-medium">校舎</th>
-                        {monthHeaders.map((month) => (
+                        {columnHeaders.map((column) => (
                           <th
-                            key={month.yearMonth}
+                            key={column.yearMonth}
                             className="px-2 py-2 text-center font-medium"
                           >
-                            {month.monthLabel}
+                            {column.monthLabel}
                           </th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
                       {teacher.students.map((student) => {
-                        const rowKey = `${student.teacherId}:${student.studentId}:${student.subject}`;
+                        const rowKey =
+                          sheetKind === "course-proposal"
+                            ? `${student.teacherId}:${student.studentId}`
+                            : `${student.teacherId}:${student.studentId}:${student.subject}`;
                         const opening = openingId === rowKey;
                         return (
                           <tr
@@ -257,18 +407,20 @@ export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
                                 </span>
                               </button>
                             </td>
-                            <td className="px-2 py-2 text-gray-800">
-                              {student.subject}
-                            </td>
+                            {showSubjectColumn ? (
+                              <td className="px-2 py-2 text-gray-800">
+                                {student.subject}
+                              </td>
+                            ) : null}
                             <td className="px-2 py-2 text-xs text-gray-600">
                               {student.sheetCampus || "—"}
                             </td>
-                            {student.months.map((month) => (
+                            {student.months.map((column) => (
                               <td
-                                key={month.yearMonth}
+                                key={column.yearMonth}
                                 className="px-2 py-2 text-center text-gray-800"
                               >
-                                {month.filled ? "〇" : ""}
+                                {column.filled ? "〇" : ""}
                               </td>
                             ))}
                           </tr>

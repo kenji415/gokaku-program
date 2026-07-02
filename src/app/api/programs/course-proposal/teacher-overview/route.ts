@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
+import { isCourseProposalSeason } from "@/lib/course-proposal-types";
 import {
   canViewTeacherOverview,
-  getTeacherOverview,
+  getCourseProposalTeacherOverview,
 } from "@/lib/teacher-overview";
 
 export async function GET(request: Request) {
@@ -16,16 +17,19 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
-  const startYearMonth = searchParams.get("startYearMonth")?.trim();
-  if (!startYearMonth) {
-    return NextResponse.json({ error: "startYearMonth is required" }, { status: 400 });
+  const year = Number(searchParams.get("year"));
+  const season = searchParams.get("season")?.trim() ?? "";
+
+  if (!Number.isFinite(year) || !isCourseProposalSeason(season)) {
+    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  const teachers = getTeacherOverview(
+  const teachers = getCourseProposalTeacherOverview(
     session.id,
     session.memberRole,
-    startYearMonth,
+    year,
+    season,
   );
 
-  return NextResponse.json({ teachers, startYearMonth, kind: "program" });
+  return NextResponse.json({ teachers, kind: "course-proposal", year, season });
 }

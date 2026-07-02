@@ -1,3 +1,8 @@
+import {
+  COURSE_PROPOSAL_SEASON_LABELS,
+  type CourseProposalSeason,
+} from "./course-proposal-types";
+
 export type MonthSlot = {
   index: number;
   yearMonth: string;
@@ -97,4 +102,18 @@ export function buildFinalStretchPdfFilename(params: {
     params.gender,
   );
   return `${displayName}_直前期合格プログラムシート_${params.subject}_${params.grade}_${params.teacherName.split(" ")[0] ?? params.teacherName}`;
+}
+
+export function buildCourseProposalPdfFilename(params: {
+  year: number;
+  season: CourseProposalSeason;
+  studentName: string;
+  gender?: string | null;
+}): string {
+  const seasonLabel = COURSE_PROPOSAL_SEASON_LABELS[params.season];
+  const displayName = formatStudentDisplayName(
+    params.studentName,
+    params.gender,
+  );
+  return `${params.year}年${seasonLabel}提案書 ${displayName}`;
 }

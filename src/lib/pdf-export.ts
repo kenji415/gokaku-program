@@ -37,6 +37,12 @@ async function launchPdfBrowser(): Promise<Browser> {
   });
 }
 
+/** Puppeteer の Chrome をバックグラウンドで終了（レスポンス送信をブロックしない） */
+export function releasePdfBrowser(browser?: Browser): void {
+  if (!browser) return;
+  void disposePdfBrowser(browser).catch(() => undefined);
+}
+
 /** Puppeteer の Chrome を確実に終了させる */
 export async function disposePdfBrowser(browser?: Browser): Promise<void> {
   if (!browser) return;
@@ -288,4 +294,125 @@ export async function writeFinalStretchSheetPdf(params: {
 
 export async function closePdfBrowser(browser: Browser | undefined): Promise<void> {
   await disposePdfBrowser(browser);
+}
+
+const COURSE_PROPOSAL_PDF_OPTIONS = {
+  printBackground: true,
+  width: "176mm",
+  height: "250mm",
+  margin: { top: "0", right: "0", bottom: "0", left: "0" },
+  pageRanges: "1",
+} as const;
+
+async function exportCourseProposalSheetToPdfWithBrowser(
+  browser: Browser,
+  params: {
+    sheetId: string;
+    sessionToken: string;
+    baseUrl: string;
+  },
+): Promise<Buffer> {
+  const page = await browser.newPage();
+  try {
+    await page.setCacheEnabled(false);
+    await page.setCookie({
+      name: SESSION_COOKIE_NAME,
+      value: params.sessionToken,
+      url: params.baseUrl,
+      path: "/",
+      httpOnly: true,
+    });
+
+    await page.goto(
+      `${params.baseUrl}/programs/course-proposal/${params.sheetId}/print`,
+      {
+        waitUntil: "domcontentloaded",
+        timeout: 60_000,
+      },
+    );
+
+    if (page.url().includes("/login")) {
+      throw new Error("印刷ページの認証に失敗しました");
+    }
+
+    await page.setViewport({ width: 665, height: 945, deviceScaleFactor: 1 });
+    await page.emulateMediaType("print");
+    await page.waitForSelector(".course-proposal-sheet", { timeout: 30_000 });
+
+    await page.evaluate(() => {
+      const sheet = document.querySelector(".course-proposal-sheet");
+      if (!sheet) throw new Error("course proposal sheet not found");
+      document.body.replaceChildren(sheet);
+
+      for (const element of [document.documentElement, document.body]) {
+        const node = element as HTMLElement;
+        node.style.margin = "0";
+        node.style.padding = "0";
+        node.style.width = "176mm";
+        node.style.height = "250mm";
+        node.style.minHeight = "0";
+        node.style.maxHeight = "250mm";
+        node.style.overflow = "hidden";
+        node.style.background = "white";
+      }
+
+      const sheetEl = sheet as HTMLElement;
+      sheetEl.style.margin = "0";
+      sheetEl.style.pageBreakAfter = "auto";
+      sheetEl.style.breakAfter = "auto";
+
+      for (const advice of document.querySelectorAll(
+        ".course-proposal-subject-advice",
+      )) {
+        const node = advice as HTMLElement;
+        node.style.whiteSpace = "pre-wrap";
+        node.style.wordBreak = "break-word";
+      }
+    });
+
+    try {
+      await page.waitForFunction(
+        () => {
+          const img = document.querySelector(
+            ".course-proposal-footer-logo",
+          ) as HTMLImageElement | null;
+          return Boolean(img && img.complete && img.naturalWidth > 0);
+        },
+        { timeout: 5_000 },
+      );
+    } catch {
+      // ロゴ読み込みが遅い場合でも PDF 生成は続行する
+    }
+
+    const pdfBuffer = await page.pdf(COURSE_PROPOSAL_PDF_OPTIONS);
+    return Buffer.from(pdfBuffer);
+  } finally {
+    await page.close();
+  }
+}
+
+export async function renderCourseProposalSheetPdf(params: {
+  sheetId: string;
+  filenameBase: string;
+  sessionToken: string;
+  request?: Request;
+  baseUrl?: string;
+  browser?: Browser;
+}): Promise<{ buffer: Buffer; fileName: string; browser: Browser }> {
+  const fileName = `${sanitizePdfFilename(params.filenameBase)}.pdf`;
+  const baseUrl = params.baseUrl ?? resolvePdfServerBaseUrl();
+  const browser = params.browser ?? (await launchPdfBrowser());
+  const ownsBrowser = !params.browser;
+
+  try {
+    const buffer = await exportCourseProposalSheetToPdfWithBrowser(browser, {
+      sheetId: params.sheetId,
+      sessionToken: params.sessionToken,
+      baseUrl,
+    });
+    return { buffer, fileName, browser };
+  } catch (error) {
+    if (ownsBrowser) await disposePdfBrowser(browser);
+    throw error;
+  }
 }

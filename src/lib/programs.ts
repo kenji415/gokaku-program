@@ -70,6 +70,19 @@ function resolveSheetCampus(
   return { campus: fallback, usesDefaultCampus: true };
 }
 
+/** プログラムシート右上に表示する受験Dr.校舎 */
+export function resolveProgramSheetDisplayCampus(
+  storedCampus: string | null | undefined,
+  teacherDefaultCampus: string | null | undefined,
+  studentCampus: string | null | undefined,
+): string {
+  return resolveSheetCampus(
+    storedCampus,
+    teacherDefaultCampus,
+    studentCampus,
+  ).campus;
+}
+
 function normalizeSheetCampusForStorage(
   displayCampus: string,
   teacherDefaultCampus: string | null | undefined,

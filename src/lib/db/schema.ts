@@ -171,3 +171,25 @@ export const finalStretchRows = sqliteTable("final_stretch_rows", {
   unitTheme: text("unit_theme"),
   detail: text("detail"),
 });
+
+export const courseProposalSheets = sqliteTable(
+  "course_proposal_sheets",
+  {
+    id: text("id").primaryKey(),
+    studentId: text("student_id")
+      .notNull()
+      .references(() => students.id),
+    teacherId: text("teacher_id")
+      .notNull()
+      .references(() => users.id),
+    year: integer("year").notNull(),
+    season: text("season", {
+      enum: ["spring", "summer", "winter"],
+    }).notNull(),
+    subjectsJson: text("subjects_json").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    pdfExportedAt: text("pdf_exported_at"),
+  },
+  (t) => [unique().on(t.studentId, t.year, t.season)],
+);
