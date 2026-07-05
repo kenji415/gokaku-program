@@ -251,10 +251,17 @@ type Props = {
   items: StudentTestResultHistoryItem[];
   loading?: boolean;
   error?: string;
+  onDelete?: (testScheduleId: string, displayText: string) => Promise<boolean>;
 };
 
-export function ScoreHistoryPanel({ items, loading, error }: Props) {
+export function ScoreHistoryPanel({
+  items,
+  loading,
+  error,
+  onDelete,
+}: Props) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const toggleItem = (testScheduleId: string) => {
     setSelectedIds((prev) => {
@@ -272,6 +279,23 @@ export function ScoreHistoryPanel({ items, loading, error }: Props) {
     () => items.filter((item) => selectedIds.has(item.testScheduleId)),
     [items, selectedIds],
   );
+
+  const handleDelete = async (item: StudentTestResultHistoryItem) => {
+    if (!onDelete) return;
+    setDeletingId(item.testScheduleId);
+    try {
+      const ok = await onDelete(item.testScheduleId, item.displayText);
+      if (ok) {
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(item.testScheduleId);
+          return next;
+        });
+      }
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   if (loading) {
     return <div className="p-8 text-center text-sm text-gray-500">読み込み中…</div>;
@@ -305,6 +329,9 @@ export function ScoreHistoryPanel({ items, loading, error }: Props) {
                 <th className={scoreHistoryScoreColHeadClass}>理</th>
                 <th className={scoreHistoryScoreColHeadClass}>社</th>
                 <th className="border border-gray-300 px-2 py-2">備考</th>
+                {onDelete ? (
+                  <th className="w-20 border border-gray-300 px-1 py-2" />
+                ) : null}
               </tr>
             </thead>
             <tbody>
@@ -345,6 +372,20 @@ export function ScoreHistoryPanel({ items, loading, error }: Props) {
                   <td className="border border-gray-300 px-2 py-1.5">
                     {item.result.notes || "—"}
                   </td>
+                  {onDelete ? (
+                    <td className="border border-gray-300 px-1 py-1.5 text-center">
+                      <button
+                        type="button"
+                        className="whitespace-nowrap text-[11px] text-red-600 underline disabled:opacity-50"
+                        disabled={deletingId === item.testScheduleId}
+                        onClick={() => void handleDelete(item)}
+                      >
+                        {deletingId === item.testScheduleId
+                          ? "削除中…"
+                          : "成績を削除"}
+                      </button>
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>

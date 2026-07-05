@@ -3,7 +3,7 @@ import { v4 as uuid } from "uuid";
 import { getDb } from "./db";
 import * as schema from "./db/schema";
 import type { SpreadsheetRow } from "./test-schedule-utils";
-import { isRowEmpty, sortTestScheduleRows } from "./test-schedule-utils";
+import { isRowEmpty, sortTestScheduleRows, testBelongsToYearMonth } from "./test-schedule-utils";
 import { invalidateTestScheduleCache } from "./test-schedule-cache";
 
 export type TestScheduleInput = {
@@ -18,6 +18,31 @@ export type TestScheduleInput = {
 
 function rowInTestCourse(value: number | boolean | null | undefined): boolean {
   return value === true || value === 1;
+}
+
+type DbTx = ReturnType<typeof getDb>;
+
+function pruneMisplacedStudentMonthTests(
+  tx: DbTx,
+  testScheduleId: string,
+  test: { testDate: string | null; yearMonth: string },
+) {
+  const links = tx
+    .select({
+      id: schema.studentMonthTests.id,
+      yearMonth: schema.studentMonthTests.yearMonth,
+    })
+    .from(schema.studentMonthTests)
+    .where(eq(schema.studentMonthTests.testScheduleId, testScheduleId))
+    .all();
+
+  for (const link of links) {
+    if (!testBelongsToYearMonth(test, link.yearMonth)) {
+      tx.delete(schema.studentMonthTests)
+        .where(eq(schema.studentMonthTests.id, link.id))
+        .run();
+    }
+  }
 }
 
 export function listTestSchedules() {
@@ -73,6 +98,10 @@ export function updateTestSchedule(id: string, input: TestScheduleInput) {
     })
     .where(eq(schema.testSchedules.id, id))
     .run();
+  pruneMisplacedStudentMonthTests(db, id, {
+    testDate: input.testDate ?? null,
+    yearMonth: input.yearMonth,
+  });
   invalidateTestScheduleCache();
 }
 
@@ -141,6 +170,11 @@ export function bulkSaveTestSchedules(
           .set(data)
           .where(eq(schema.testSchedules.id, row.id))
           .run();
+
+        pruneMisplacedStudentMonthTests(tx, row.id, {
+          testDate: data.testDate,
+          yearMonth: data.yearMonth,
+        });
 
         if (wasInCourse && !nowInCourse) {
           const links = tx

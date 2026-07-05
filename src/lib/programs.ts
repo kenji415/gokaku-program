@@ -474,7 +474,6 @@ export function getTestsForMonth(
     getCachedTestSchedules().filter((row) => {
       if (row.grade !== grade) return false;
       if (!hasTestScheduleDate(row.testDate)) return false;
-      if (row.yearMonth !== yearMonth) return false;
       if (!row.inTestCourse) return false;
       if (pattern && row.cramSchool !== pattern) return false;
       return testBelongsToYearMonth(row, yearMonth);
@@ -663,7 +662,10 @@ function setStudentMonthTests(
   testIds: string[],
 ) {
   const db = getDb();
-  const uniqueIds = [...new Set(testIds)];
+  const uniqueIds = filterTestIdsForYearMonth(
+    [...new Set(testIds)],
+    yearMonth,
+  );
 
   db.transaction((tx) => {
     tx.delete(schema.studentMonthTests)

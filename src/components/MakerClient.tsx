@@ -23,7 +23,7 @@ import type {
   StudentTestResultInput,
 } from "@/lib/programs";
 import type { RecentTestResult, StudentTestResultHistoryItem } from "@/lib/test-results";
-import { hasScoreResult } from "@/lib/test-result-types";
+import { hasScoreResult, EMPTY_TEST_RESULT } from "@/lib/test-result-types";
 import { compareByGradeThenName, gradeSortRank } from "@/lib/constants";
 import { NEW_STUDENT_ID } from "@/lib/student-constants";
 import type { StudentBasicInfo } from "@/lib/student-basic-info-types";
@@ -50,6 +50,11 @@ import {
   type CourseProposalSubject,
   type CourseProposalSubjectData,
 } from "@/lib/course-proposal-types";
+
+function normalizeStudentId(id: string | number | null | undefined): string {
+  if (id == null) return "";
+  return String(id).trim();
+}
 
 const navArrowBtnClass =
   "border-0 bg-transparent p-0 text-[10px] leading-none text-gray-600 hover:text-gray-900";
@@ -286,28 +291,28 @@ export function MakerClient({
     >();
     for (const a of assignments) {
       if (isBrokenStudentName(a.studentName)) continue;
-      if (!map.has(a.studentId)) {
-        map.set(a.studentId, {
-          name: a.studentName,
-          grade: a.grade,
-          graduatedAt: null,
-        });
-      }
+      const id = normalizeStudentId(a.studentId);
+      if (!id || map.has(id)) continue;
+      map.set(id, {
+        name: a.studentName,
+        grade: a.grade,
+        graduatedAt: null,
+      });
     }
-    for (const [id, data] of extraStudents) {
-      if (!map.has(id)) {
-        map.set(id, { ...data, graduatedAt: null });
-      }
+    for (const [rawId, data] of extraStudents) {
+      const id = normalizeStudentId(rawId);
+      if (!id || map.has(id)) continue;
+      map.set(id, { ...data, graduatedAt: null });
     }
     if (includeGraduated) {
       for (const student of graduatedStudents) {
-        if (!map.has(student.id)) {
-          map.set(student.id, {
-            name: student.name,
-            grade: student.grade,
-            graduatedAt: student.graduatedAt,
-          });
-        }
+        const id = normalizeStudentId(student.id);
+        if (!id || map.has(id)) continue;
+        map.set(id, {
+          name: student.name,
+          grade: student.grade,
+          graduatedAt: student.graduatedAt,
+        });
       }
     }
 
@@ -340,7 +345,13 @@ export function MakerClient({
         return a.name.localeCompare(b.name, "ja");
       });
 
-    return [...active, ...archived];
+    const merged = [...active, ...archived];
+    const seen = new Set<string>();
+    return merged.filter((option) => {
+      if (seen.has(option.id)) return false;
+      seen.add(option.id);
+      return true;
+    });
   }, [
     assignments,
     extraStudents,
@@ -387,9 +398,11 @@ export function MakerClient({
 
   const registerStudentOption = useCallback(
     (summary: { id: string; name: string; grade: string }) => {
+      const id = normalizeStudentId(summary.id);
+      if (!id) return;
       setExtraStudents((prev) => {
         const next = new Map(prev);
-        next.set(summary.id, { name: summary.name, grade: summary.grade });
+        next.set(id, { name: summary.name, grade: summary.grade });
         return next;
       });
     },
@@ -1130,6 +1143,55 @@ export function MakerClient({
     return true;
   };
 
+  const handleScoreHistoryDelete = async (
+    testScheduleId: string,
+    displayText: string,
+  ): Promise<boolean> => {
+    if (!studentId || studentId === NEW_STUDENT_ID) return false;
+    if (
+      !window.confirm(`「${displayText}」の成績を削除します。よろしいですか？`)
+    ) {
+      return false;
+    }
+
+    const res = await fetch("/api/programs/test-results", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        studentId,
+        testScheduleId,
+        sheetId: sheetRef.current?.id,
+        result: EMPTY_TEST_RESULT,
+      }),
+    });
+
+    if (!res.ok) return false;
+
+    const data = (await res.json()) as {
+      recentTestResults?: RecentTestResult[];
+    };
+
+    setScoreHistoryItems((prev) =>
+      prev.filter((item) => item.testScheduleId !== testScheduleId),
+    );
+
+    setSheet((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        recentTestResults: data.recentTestResults ?? prev.recentTestResults,
+        months: prev.months.map((m) => ({
+          ...m,
+          tests: m.tests.map((t) =>
+            t.id === testScheduleId ? { ...t, result: null } : t,
+          ),
+        })),
+      };
+    });
+
+    return true;
+  };
+
   const handlePrint = async () => {
     if (!sheet) return;
     const saved = await flushSave();
@@ -1507,6 +1569,7 @@ export function MakerClient({
             items={scoreHistoryItems}
             loading={scoreHistoryLoading}
             error={scoreHistoryError}
+            onDelete={handleScoreHistoryDelete}
           />
         ) : activeTab === "course-proposal" ? (
           isNewStudent ? (

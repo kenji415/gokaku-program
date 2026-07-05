@@ -140,6 +140,15 @@ export function normalizeDateInput(
   const input = raw.trim();
   if (!input) return "";
 
+  const japaneseStyle = toHalfWidthDateChars(input)
+    .replace(/年/g, "/")
+    .replace(/月/g, "/")
+    .replace(/日/g, "");
+  const parsedFromJapanese = parseTestDateParts(japaneseStyle);
+  if (parsedFromJapanese) {
+    return formatCanonicalTestDate(parsedFromJapanese);
+  }
+
   const sanitized = sanitizeTestDateInput(input);
   const parsedFromSlash = parseTestDateParts(sanitized);
   if (parsedFromSlash) {

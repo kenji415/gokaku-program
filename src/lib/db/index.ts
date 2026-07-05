@@ -9,6 +9,8 @@ import {
 } from "../data-path";
 import { normalizeStudentName } from "../student-name";
 import { seedMembersIfNeeded } from "../members";
+import { runTestScheduleRepair } from "../test-schedule-repair";
+import { invalidateTestScheduleCache } from "../test-schedule-cache";
 
 type AppDb = BetterSQLite3Database<typeof schema>;
 
@@ -277,6 +279,9 @@ function ensureSchema(sqlite: Database.Database) {
       INSERT INTO app_meta (key, value) VALUES ('normalize_student_names_fullwidth', '1')
     `);
   }
+
+  runTestScheduleRepair(sqlite);
+  invalidateTestScheduleCache();
 }
 
 function createDb() {
