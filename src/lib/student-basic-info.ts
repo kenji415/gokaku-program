@@ -10,6 +10,10 @@ import {
   listTeachers,
 } from "./students";
 import { normalizeStudentName } from "./student-name";
+import {
+  isStudentClassNameLocked,
+  syncStudentClassNameFromResults,
+} from "./student-class-name";
 import type {
   StudentBasicInfo,
   StudentBasicInfoInput,
@@ -32,6 +36,7 @@ export function createStudentBasicInfoTemplate(): StudentBasicInfo {
     cramSchool: "",
     campus: "",
     className: "",
+    classNameLocked: false,
     mockExamPattern: "",
     targetSchool: "",
     graduatedAt: null,
@@ -107,17 +112,26 @@ export function getStudentBasicInfo(
 
   if (!student) return null;
 
+  const className = syncStudentClassNameFromResults(studentId);
+  const refreshed = db
+    .select()
+    .from(schema.students)
+    .where(eq(schema.students.id, studentId))
+    .get();
+  if (!refreshed) return null;
+
   return {
-    id: student.id,
-    name: student.name,
-    gender: student.gender,
-    grade: student.grade,
-    cramSchool: student.cramSchool ?? "",
-    campus: student.campus ?? "",
-    className: student.className ?? "",
-    mockExamPattern: student.mockExamPattern ?? "",
-    targetSchool: student.targetSchool ?? "",
-    graduatedAt: student.graduatedAt ?? null,
+    id: refreshed.id,
+    name: refreshed.name,
+    gender: refreshed.gender,
+    grade: refreshed.grade,
+    cramSchool: refreshed.cramSchool ?? "",
+    campus: refreshed.campus ?? "",
+    className,
+    classNameLocked: isStudentClassNameLocked(refreshed.classNameLocked),
+    mockExamPattern: refreshed.mockExamPattern ?? "",
+    targetSchool: refreshed.targetSchool ?? "",
+    graduatedAt: refreshed.graduatedAt ?? null,
     assignments: buildAssignments(studentId),
     teacherOptions: listTeachers().map((t) => ({ id: t.id, name: t.name })),
   };
@@ -190,6 +204,7 @@ export function patchStudentBasicInfo(
       input.className !== undefined
         ? input.className.trim() || null
         : undefined,
+    classNameLocked: input.classNameLocked === true ? 1 : undefined,
     mockExamPattern:
       input.mockExamPattern !== undefined
         ? input.mockExamPattern.trim() || null

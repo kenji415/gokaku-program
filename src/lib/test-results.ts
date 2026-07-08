@@ -10,6 +10,9 @@ import {
   type StudentTestResultInput,
 } from "./test-result-types";
 import {
+  applyStudentClassNameFromTestResult,
+} from "./student-class-name";
+import {
   eventDateSortRank,
   formatTestScheduleDisplayText,
 } from "./test-schedule-utils";
@@ -43,6 +46,7 @@ function rowToInput(
     japanese: row.japanese ?? "",
     science: row.science ?? "",
     social: row.social ?? "",
+    newClass: row.newClass ?? "",
     notes: row.notes ?? "",
     extraScores: parseExtraScores(row.extraScores),
   };
@@ -51,6 +55,7 @@ function rowToInput(
 function hasAnyValue(input: StudentTestResultInput): boolean {
   return (
     hasScoreResult(input) ||
+    input.newClass?.trim() !== "" ||
     input.notes.trim() !== "" ||
     (input.extraScores ?? []).some(
       (row) => row.label.trim() !== "" || row.value.trim() !== "",
@@ -114,6 +119,7 @@ export function saveStudentTestResult(
     japanese: input.japanese.trim(),
     science: input.science.trim(),
     social: input.social.trim(),
+    newClass: (input.newClass ?? "").trim(),
     notes: input.notes.trim(),
     extraScores: (input.extraScores ?? []).map((row) => ({
       label: row.label.trim(),
@@ -151,12 +157,16 @@ export function saveStudentTestResult(
         japanese: normalized.japanese,
         science: normalized.science,
         social: normalized.social,
+        newClass: normalized.newClass,
         notes: normalized.notes,
         extraScores: extraScoresJson || null,
         updatedAt: now,
       })
       .where(eq(schema.studentTestResults.id, existing.id))
       .run();
+    if (normalized.newClass) {
+      applyStudentClassNameFromTestResult(studentId, normalized.newClass);
+    }
     return existing.id;
   }
 
@@ -172,11 +182,15 @@ export function saveStudentTestResult(
       japanese: normalized.japanese,
       science: normalized.science,
       social: normalized.social,
+      newClass: normalized.newClass,
       notes: normalized.notes,
       extraScores: extraScoresJson || null,
       updatedAt: now,
     })
     .run();
+  if (normalized.newClass) {
+    applyStudentClassNameFromTestResult(studentId, normalized.newClass);
+  }
   return id;
 }
 

@@ -7,6 +7,7 @@ import { EXAM_DR_CAMPUS_NAMES } from "@/lib/constants";
 import {
   COURSE_PROPOSAL_SEASON_LABELS,
   COURSE_PROPOSAL_SEASONS,
+  COURSE_PROPOSAL_SUBJECTS,
   defaultCourseProposalSeason,
   defaultCourseProposalYear,
   type CourseProposalSeason,
@@ -44,8 +45,17 @@ function overviewDescription(kind: TeacherOverviewSheetKind): string {
     case "final-stretch":
       return "講師ごとの担当6年生と、11月・12月・1月の入力状況（〇＝入力あり）を確認できます。氏名をクリックすると直前期シートを開きます。";
     case "course-proposal":
-      return "講師ごとの担当生徒と、各科目の講習内容・提案コマ数の入力状況（〇＝入力あり）を確認できます。氏名をクリックすると講習提案書を開きます。";
+      return "生徒ごとの提案内容・提案コマ数を一覧できます。各科目の提案内容の下に担当講師名を表示します。氏名をクリックすると講習提案書を開きます。担当あり未入力は薄い赤、担当なしは灰色です。";
   }
+}
+
+function courseProposalCellClass(
+  hasAssignee: boolean | undefined,
+  value: string | undefined,
+): string {
+  if (!hasAssignee) return "bg-gray-100 text-gray-400";
+  if (!value?.trim()) return "bg-red-50";
+  return "";
 }
 
 export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
@@ -69,10 +79,20 @@ export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
     [teachers],
   );
 
-  const teacherNameOptions = useMemo(
-    () => teachers.map((teacher) => teacher.teacherName),
-    [teachers],
-  );
+  const teacherNameOptions = useMemo(() => {
+    if (sheetKind === "course-proposal") {
+      const names = new Set<string>();
+      for (const teacher of teachers) {
+        for (const student of teacher.students) {
+          for (const cell of student.months) {
+            if (cell.assigneeName?.trim()) names.add(cell.assigneeName.trim());
+          }
+        }
+      }
+      return [...names].sort((a, b) => a.localeCompare(b, "ja"));
+    }
+    return teachers.map((teacher) => teacher.teacherName);
+  }, [teachers, sheetKind]);
 
   const studentNameOptions = useMemo(() => {
     const names = new Set<string>();
@@ -87,6 +107,28 @@ export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
   const filteredTeachers = useMemo(() => {
     if (!showAdminSearch) return teachers;
 
+    if (sheetKind === "course-proposal") {
+      const students = teachers
+        .flatMap((teacher) => teacher.students)
+        .filter((student) => {
+          if (!matchesNameQuery(student.studentName, studentQuery)) return false;
+          if (!teacherQuery.trim()) return true;
+          return student.months.some((cell) =>
+            matchesNameQuery(cell.assigneeName ?? "", teacherQuery),
+          );
+        })
+        .sort((a, b) => a.studentName.localeCompare(b.studentName, "ja"));
+
+      if (students.length === 0) return [];
+      return [
+        {
+          teacherId: "course-proposal-students",
+          teacherName: "",
+          students,
+        },
+      ];
+    }
+
     return teachers
       .filter((teacher) => matchesNameQuery(teacher.teacherName, teacherQuery))
       .map((teacher) => ({
@@ -100,11 +142,27 @@ export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
         ),
       }))
       .filter((teacher) => teacher.students.length > 0);
-  }, [teachers, showAdminSearch, teacherQuery, studentQuery, campusFilter]);
+  }, [
+    teachers,
+    showAdminSearch,
+    teacherQuery,
+    studentQuery,
+    campusFilter,
+    sheetKind,
+  ]);
+
+  const courseProposalStudents = useMemo(() => {
+    if (sheetKind !== "course-proposal") return [];
+    return filteredTeachers.flatMap((teacher) => teacher.students);
+  }, [filteredTeachers, sheetKind]);
 
   const hasActiveSearch =
     showAdminSearch &&
-    Boolean(teacherQuery.trim() || studentQuery.trim() || campusFilter);
+    Boolean(
+      teacherQuery.trim() ||
+        studentQuery.trim() ||
+        (sheetKind !== "course-proposal" && campusFilter),
+    );
 
   useEffect(() => {
     let cancelled = false;
@@ -143,7 +201,7 @@ export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
   const openSheet = async (row: TeacherOverviewStudentRow) => {
     const rowKey =
       sheetKind === "course-proposal"
-        ? `${row.teacherId}:${row.studentId}`
+        ? row.studentId
         : `${row.teacherId}:${row.studentId}:${row.subject}`;
     setOpeningId(rowKey);
 
@@ -212,7 +270,6 @@ export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
         proposalYear: String(proposalYear),
         proposalSeason: proposalSeason,
       });
-      if (row.subject) params.set("subject", row.subject);
       router.push(`/maker?${params.toString()}`);
     } finally {
       setOpeningId(null);
@@ -220,6 +277,8 @@ export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
   };
 
   const showSubjectColumn = sheetKind !== "course-proposal";
+  const showCampusColumn = sheetKind !== "course-proposal";
+  const isCourseProposalOverview = sheetKind === "course-proposal";
 
   return (
     <div className="mx-auto max-w-6xl px-2">
@@ -262,23 +321,25 @@ export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
                   placeholder="生徒名で絞り込み"
                   onChange={setStudentQuery}
                 />
-                <label className="block min-w-[9rem] text-sm">
-                  <span className="mb-1 block text-xs font-medium text-gray-700">
-                    校舎
-                  </span>
-                  <select
-                    className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm"
-                    value={campusFilter}
-                    onChange={(event) => setCampusFilter(event.target.value)}
-                  >
-                    <option value="">すべて</option>
-                    {EXAM_DR_CAMPUS_NAMES.map((campus) => (
-                      <option key={campus} value={campus}>
-                        {campus}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                {sheetKind !== "course-proposal" ? (
+                  <label className="block min-w-[9rem] text-sm">
+                    <span className="mb-1 block text-xs font-medium text-gray-700">
+                      校舎
+                    </span>
+                    <select
+                      className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm"
+                      value={campusFilter}
+                      onChange={(event) => setCampusFilter(event.target.value)}
+                    >
+                      <option value="">すべて</option>
+                      {EXAM_DR_CAMPUS_NAMES.map((campus) => (
+                        <option key={campus} value={campus}>
+                          {campus}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
                 {hasActiveSearch ? (
                   <button
                     type="button"
@@ -350,12 +411,90 @@ export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
           <p className="py-8 text-center text-sm text-gray-500">読み込み中…</p>
         ) : error ? (
           <p className="py-8 text-center text-sm text-red-600">{error}</p>
-        ) : filteredTeachers.length === 0 ? (
+        ) : (isCourseProposalOverview
+            ? courseProposalStudents.length === 0
+            : filteredTeachers.length === 0) ? (
           <p className="py-8 text-center text-sm text-gray-500">
             {hasActiveSearch
               ? "条件に一致する担当がありません。"
               : "表示できる担当がありません。"}
           </p>
+        ) : isCourseProposalOverview ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1100px] border-collapse text-xs">
+              <thead>
+                <tr className="bg-gray-50 text-left text-xs text-gray-600">
+                  <th className="sticky left-0 z-10 bg-gray-50 px-2 py-2 font-medium">
+                    生徒
+                  </th>
+                  {COURSE_PROPOSAL_SUBJECTS.flatMap((subject) => [
+                    <th
+                      key={`${subject}-advice`}
+                      className="min-w-[7rem] px-1.5 py-1.5 text-center font-medium"
+                    >
+                      {subject}
+                      <span className="mt-0.5 block text-[10px] font-normal text-gray-500">
+                        提案内容
+                      </span>
+                    </th>,
+                    <th
+                      key={`${subject}-count`}
+                      className="w-12 px-1.5 py-1.5 text-center font-medium"
+                    >
+                      {subject}
+                      <span className="mt-0.5 block text-[10px] font-normal text-gray-500">
+                        コマ数
+                      </span>
+                    </th>,
+                  ])}
+                </tr>
+              </thead>
+              <tbody>
+                {courseProposalStudents.map((student) => {
+                  const opening = openingId === student.studentId;
+                  return (
+                    <tr
+                      key={student.studentId}
+                      className="border-b last:border-b-0 hover:bg-gray-50"
+                    >
+                      <td className="sticky left-0 z-10 bg-white px-2 py-2">
+                        <button
+                          type="button"
+                          className="font-medium text-[#1e3a5f] underline-offset-2 hover:underline disabled:opacity-50"
+                          disabled={opening}
+                          onClick={() => void openSheet(student)}
+                        >
+                          {student.studentName}
+                          <span className="ml-1 text-[10px] text-gray-500">
+                            （{student.grade}）
+                          </span>
+                        </button>
+                      </td>
+                      {student.months.flatMap((column) => [
+                        <td
+                          key={`${column.yearMonth}-advice`}
+                          className={`max-w-[10rem] px-1.5 py-1.5 align-top text-[10px] leading-snug whitespace-pre-wrap ${courseProposalCellClass(column.hasAssignee, column.advice) || "text-gray-800"}`}
+                        >
+                          <div>{column.advice || "—"}</div>
+                          {column.hasAssignee && column.assigneeName ? (
+                            <div className="mt-1 text-[9px] font-medium text-[#1e3a5f]">
+                              {column.assigneeName}
+                            </div>
+                          ) : null}
+                        </td>,
+                        <td
+                          key={`${column.yearMonth}-count`}
+                          className={`px-1.5 py-1.5 text-center align-top text-[10px] tabular-nums ${courseProposalCellClass(column.hasAssignee, column.sessionCount) || "text-gray-800"}`}
+                        >
+                          {column.sessionCount || "—"}
+                        </td>,
+                      ])}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         ) : (
           <div className="space-y-6">
             {filteredTeachers.map((teacher) => (
@@ -371,7 +510,9 @@ export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
                         {showSubjectColumn ? (
                           <th className="px-2 py-2 font-medium">科目</th>
                         ) : null}
-                        <th className="px-2 py-2 font-medium">校舎</th>
+                        {showCampusColumn ? (
+                          <th className="px-2 py-2 font-medium">校舎</th>
+                        ) : null}
                         {columnHeaders.map((column) => (
                           <th
                             key={column.yearMonth}
@@ -384,10 +525,7 @@ export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
                     </thead>
                     <tbody>
                       {teacher.students.map((student) => {
-                        const rowKey =
-                          sheetKind === "course-proposal"
-                            ? `${student.teacherId}:${student.studentId}`
-                            : `${student.teacherId}:${student.studentId}:${student.subject}`;
+                        const rowKey = `${student.teacherId}:${student.studentId}:${student.subject}`;
                         const opening = openingId === rowKey;
                         return (
                           <tr
@@ -402,7 +540,7 @@ export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
                                 onClick={() => void openSheet(student)}
                               >
                                 {student.studentName}
-                                <span className="ml-1 text-xs text-gray-500">
+                                <span className="ml-1 text-[10px] text-gray-500">
                                   （{student.grade}）
                                 </span>
                               </button>
@@ -412,9 +550,11 @@ export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
                                 {student.subject}
                               </td>
                             ) : null}
-                            <td className="px-2 py-2 text-xs text-gray-600">
-                              {student.sheetCampus || "—"}
-                            </td>
+                            {showCampusColumn ? (
+                              <td className="px-2 py-2 text-xs text-gray-600">
+                                {student.sheetCampus || "—"}
+                              </td>
+                            ) : null}
                             {student.months.map((column) => (
                               <td
                                 key={column.yearMonth}

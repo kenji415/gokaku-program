@@ -15,7 +15,7 @@ import { TeacherStudentList } from "@/components/TeacherStudentList";
 import { ScoreHistoryPanel } from "@/components/ScoreHistoryPanel";
 import { CourseProposalSheet } from "@/components/CourseProposalSheet";
 import { useAutoSave } from "@/hooks/use-auto-save";
-import { buildPdfFilename, buildFinalStretchPdfFilename, buildCourseProposalPdfFilename, shiftYearMonth } from "@/lib/months";
+import { buildPdfFilename, buildFinalStretchPdfFilename, buildCourseProposalPdfFilename, formatYearMonthJapanese, shiftYearMonth } from "@/lib/months";
 import { savePdfFromResponse } from "@/lib/client-pdf-download";
 import type {
   MakerStudentListItem,
@@ -153,6 +153,7 @@ export function MakerClient({
     useState(0);
   const [finalStretchTargetSchoolRevision, setFinalStretchTargetSchoolRevision] =
     useState(0);
+  const [basicInfoRefreshKey, setBasicInfoRefreshKey] = useState(0);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [pdfMessage, setPdfMessage] = useState("");
   const [pdfError, setPdfError] = useState("");
@@ -1123,14 +1124,24 @@ export function MakerClient({
     };
 
     const hasValues =
-      hasScoreResult(result) || result.notes.trim() !== "";
+      hasScoreResult(result) ||
+      result.notes.trim() !== "" ||
+      result.newClass?.trim() !== "";
     const savedResult = hasValues ? result : null;
+    const savedNewClass = result.newClass?.trim() ?? "";
+
+    if (savedNewClass) {
+      setBasicInfoRefreshKey((key) => key + 1);
+    }
 
     setSheet((prev) => {
       if (!prev) return prev;
       return {
         ...prev,
         recentTestResults: data.recentTestResults ?? prev.recentTestResults,
+        student: savedNewClass
+          ? { ...prev.student, className: savedNewClass }
+          : prev.student,
         months: prev.months.map((m) => ({
           ...m,
           tests: m.tests.map((t) =>
@@ -1557,6 +1568,7 @@ export function MakerClient({
             studentId={studentId}
             teacherId={teacherId}
             isNew={isNewStudent}
+            refreshKey={basicInfoRefreshKey}
             saveFlushRef={basicSaveFlushRef}
             onSaved={applyBasicInfoToSheet}
             onExistingStudentFound={handleExistingStudentFound}
@@ -1769,16 +1781,23 @@ export function MakerClient({
               >
                 ◀
               </button>
-              <input
-                type="month"
-                className="rounded border px-2 py-1"
-                value={startYearMonth}
-                onChange={(e) => {
-                  const next = e.target.value;
-                  if (!next || next === startYearMonth) return;
-                  void switchWithSave(() => setStartYearMonth(next));
-                }}
-              />
+              <label className="relative inline-flex min-w-[7.5rem] cursor-pointer items-center justify-center rounded border border-gray-300 bg-white px-2 py-1">
+                <input
+                  type="month"
+                  lang="ja"
+                  className="absolute inset-0 cursor-pointer opacity-0"
+                  value={startYearMonth}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    if (!next || next === startYearMonth) return;
+                    void switchWithSave(() => setStartYearMonth(next));
+                  }}
+                  aria-label="開始月"
+                />
+                <span className="pointer-events-none text-sm tabular-nums text-gray-900">
+                  {formatYearMonthJapanese(startYearMonth)}
+                </span>
+              </label>
               <button
                 type="button"
                 aria-label="翌月"

@@ -17,6 +17,7 @@ export type StudentBasicInfo = {
   cramSchool: string;
   campus: string;
   className: string;
+  classNameLocked: boolean;
   mockExamPattern: string;
   targetSchool: string;
   graduatedAt: string | null;
@@ -31,6 +32,7 @@ export type StudentBasicInfoInput = {
   cramSchool?: string;
   campus?: string;
   className?: string;
+  classNameLocked?: boolean;
   mockExamPattern?: string;
   targetSchool?: string;
   assignments?: { subject: string; teacherId: string }[];

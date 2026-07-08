@@ -10,6 +10,7 @@ export type StudentTestResultInput = {
   japanese: string;
   science: string;
   social: string;
+  newClass: string;
   notes: string;
   extraScores: ExtraScoreField[];
 };
@@ -21,6 +22,7 @@ export const EMPTY_TEST_RESULT: StudentTestResultInput = {
   japanese: "",
   science: "",
   social: "",
+  newClass: "",
   notes: "",
   extraScores: [],
 };
@@ -78,6 +80,9 @@ export function formatTestResultScores(result: StudentTestResultInput): string {
     if (!row.value.trim()) continue;
     const label = row.label.trim() || "他";
     parts.push(`${label}${row.value.trim()}`);
+  }
+  if (result.newClass?.trim()) {
+    parts.push(`新クラス${result.newClass.trim()}`);
   }
   return parts.join("");
 }

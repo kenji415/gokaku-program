@@ -5,6 +5,7 @@ import * as schema from "./db/schema";
 import { buildMonthSlots, parseYearMonth } from "./months";
 import {
   formatTestScheduleDisplayText,
+  hasFullTestScheduleDay,
   hasTestScheduleDate,
   sortTestScheduleRows,
   sortTestSchedulesByGradeDesc,
@@ -16,6 +17,7 @@ import { getStudentTestResultsForIds, getRecentStudentTestResults } from "./test
 import type { RecentTestResult } from "./test-results";
 import type { StudentTestResultInput } from "./test-result-types";
 import { getCachedTestSchedules } from "./test-schedule-cache";
+import { resolveStudentClassName } from "./student-class-name";
 export type { StudentTestResultInput } from "./test-result-types";
 export { EMPTY_TEST_RESULT } from "./test-result-types";
 
@@ -464,6 +466,30 @@ export function getAllTestsForYearMonths(
   return result;
 }
 
+/** プログラムシートの月ごとテスト候補（当該学年・全日程・全塾。月は開催日の年月で判定） */
+export function getProgramTestCandidatesForMonths(
+  grade: string,
+  yearMonths: string[],
+): Record<string, { id: string; displayText: string }[]> {
+  const rows = getCachedTestSchedules().filter(
+    (row) =>
+      row.grade === grade &&
+      hasFullTestScheduleDay(row.testDate),
+  );
+  const result: Record<string, { id: string; displayText: string }[]> = {};
+
+  for (const yearMonth of [...new Set(yearMonths)]) {
+    result[yearMonth] = sortTestSchedulesByGradeDesc(
+      rows.filter((row) => testBelongsToYearMonth(row, yearMonth)),
+    ).map((t) => ({
+      id: t.id,
+      displayText: formatTestScheduleDisplayText(t),
+    }));
+  }
+
+  return result;
+}
+
 export function getTestsForMonth(
   grade: string,
   yearMonth: string,
@@ -892,7 +918,7 @@ export function getProgramSheet(sheetId: string): ProgramSheetData | null {
       grade: student.grade,
       cramSchool: trimOrEmpty(student.cramSchool),
       campus: trimOrEmpty(student.campus),
-      className: trimOrEmpty(student.className),
+      className: resolveStudentClassName(student),
       targetSchool: trimOrEmpty(student.targetSchool),
     },
     teacher: { name: teacher.name },

@@ -1,11 +1,10 @@
 import type Database from "better-sqlite3";
 import {
-  deriveScheduleFields,
+  reconcileTestScheduleFields,
   testBelongsToYearMonth,
 } from "./test-schedule-utils";
 
-const UNDATED_YEAR_MONTH = "1899-12";
-const REPAIR_KEY = "test_schedule_month_repair_v1";
+const REPAIR_KEY = "test_schedule_month_repair_v2";
 
 type TestRow = {
   id: string;
@@ -38,16 +37,15 @@ export function runTestScheduleRepair(sqlite: Database.Database) {
   );
 
   for (const test of tests) {
-    const derived = deriveScheduleFields(
-      test.test_name ?? "",
-      test.test_date ?? "",
-    );
-    const yearMonth =
-      derived.yearMonth !== UNDATED_YEAR_MONTH
-        ? derived.yearMonth
-        : test.year_month;
+    const derived = reconcileTestScheduleFields({
+      testName: test.test_name,
+      testDate: test.test_date,
+      displayText: test.display_text,
+      yearMonth: test.year_month,
+    });
     const testDate = derived.testDate || test.test_date || null;
     const displayText = derived.displayText || test.display_text;
+    const yearMonth = derived.yearMonth;
 
     if (
       yearMonth !== test.year_month ||

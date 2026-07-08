@@ -190,6 +190,46 @@ export function hasTestScheduleDate(testDate: string | null | undefined): boolea
   return parseTestDateParts(normalizeDateInput(testDate ?? "")) != null;
 }
 
+/** display_text 先頭の「06/28 」形式から日付を復元 */
+export function extractDateFromDisplayText(
+  displayText: string | null | undefined,
+): string {
+  const trimmed = displayText?.trim() ?? "";
+  const match = trimmed.match(/^(\d{1,2})\/(\d{1,2})\s+/);
+  if (!match) return "";
+  return normalizeDateInput(`${match[1]}/${match[2]}`);
+}
+
+/** 保存済み行の日付・年月・表示名を整合させる（修復・再計算用） */
+export function reconcileTestScheduleFields(row: {
+  testName?: string | null;
+  testDate?: string | null;
+  displayText?: string | null;
+  yearMonth?: string | null;
+}): DerivedSchedule & { yearMonth: string } {
+  const name = row.testName?.trim() ?? "";
+  let dateInput = row.testDate?.trim() ?? "";
+
+  if (!hasFullTestScheduleDay(dateInput)) {
+    const fromDisplay = extractDateFromDisplayText(row.displayText);
+    if (fromDisplay) {
+      dateInput = fromDisplay;
+    }
+  }
+
+  const derived = deriveScheduleFields(name, dateInput);
+  const yearMonth =
+    derived.yearMonth !== UNDATED_YEAR_MONTH
+      ? derived.yearMonth
+      : (row.yearMonth?.trim() || UNDATED_YEAR_MONTH);
+
+  return {
+    ...derived,
+    yearMonth,
+    displayText: derived.displayText || row.displayText?.trim() || name,
+  };
+}
+
 export function hasFullTestScheduleDay(
   testDate: string | null | undefined,
 ): boolean {

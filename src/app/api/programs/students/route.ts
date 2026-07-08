@@ -5,6 +5,7 @@ import {
   createStudentFromBasicInfo,
   getStudentBasicInfo,
   lookupStudentBasicInfoSummary,
+  patchStudentBasicInfo,
   type StudentBasicInfoInput,
 } from "@/lib/student-basic-info";
 import { normalizeStudentName } from "@/lib/student-name";
@@ -58,6 +59,10 @@ export async function POST(request: Request) {
     targetSchool: body.targetSchool,
     assignments: body.assignments,
   });
+
+  if (body.classNameLocked) {
+    patchStudentBasicInfo(studentId, { classNameLocked: true });
+  }
 
   const info = getStudentBasicInfo(studentId);
   if (!info) {

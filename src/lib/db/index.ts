@@ -18,6 +18,27 @@ const globalForDb = globalThis as unknown as {
   db?: { drizzle: AppDb; sqlite: Database.Database };
 };
 
+function ensureStudentTestResultColumns(sqlite: Database.Database) {
+  const resultColumns = sqlite
+    .prepare("PRAGMA table_info(student_test_results)")
+    .all() as { name: string }[];
+  if (!resultColumns.some((c) => c.name === "extra_scores")) {
+    sqlite.exec(`ALTER TABLE student_test_results ADD COLUMN extra_scores TEXT`);
+  }
+  if (!resultColumns.some((c) => c.name === "new_class")) {
+    sqlite.exec(`ALTER TABLE student_test_results ADD COLUMN new_class TEXT`);
+  }
+
+  const studentColumns = sqlite
+    .prepare("PRAGMA table_info(students)")
+    .all() as { name: string }[];
+  if (!studentColumns.some((c) => c.name === "class_name_locked")) {
+    sqlite.exec(
+      `ALTER TABLE students ADD COLUMN class_name_locked INTEGER NOT NULL DEFAULT 0`,
+    );
+  }
+}
+
 function ensureSchema(sqlite: Database.Database) {
   const userColumns = sqlite
     .prepare("PRAGMA table_info(users)")
@@ -50,13 +71,13 @@ function ensureSchema(sqlite: Database.Database) {
   if (!studentColumns.some((c) => c.name === "graduated_by_teacher_id")) {
     sqlite.exec(`ALTER TABLE students ADD COLUMN graduated_by_teacher_id TEXT REFERENCES users(id)`);
   }
-
-  const resultColumns = sqlite
-    .prepare("PRAGMA table_info(student_test_results)")
-    .all() as { name: string }[];
-  if (!resultColumns.some((c) => c.name === "extra_scores")) {
-    sqlite.exec(`ALTER TABLE student_test_results ADD COLUMN extra_scores TEXT`);
+  if (!studentColumns.some((c) => c.name === "class_name_locked")) {
+    sqlite.exec(
+      `ALTER TABLE students ADD COLUMN class_name_locked INTEGER NOT NULL DEFAULT 0`,
+    );
   }
+
+  ensureStudentTestResultColumns(sqlite);
 
   const sheetColumns = sqlite
     .prepare("PRAGMA table_info(program_sheets)")
@@ -381,6 +402,7 @@ function createDb() {
       japanese TEXT,
       science TEXT,
       social TEXT,
+      new_class TEXT,
       notes TEXT,
       updated_at TEXT NOT NULL,
       UNIQUE(student_id, test_schedule_id)
@@ -419,6 +441,8 @@ function migrateStudentMonthTests(sqlite: Database.Database) {
 export function getDb() {
   if (!globalForDb.db) {
     globalForDb.db = createDb();
+  } else {
+    ensureStudentTestResultColumns(globalForDb.db.sqlite);
   }
   return globalForDb.db.drizzle;
 }

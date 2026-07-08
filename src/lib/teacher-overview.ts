@@ -24,6 +24,14 @@ export type TeacherOverviewMonthCell = {
   yearMonth: string;
   monthLabel: string;
   filled: boolean;
+  /** 講習提案書の提案内容 */
+  advice?: string;
+  /** 講習提案書の提案コマ数 */
+  sessionCount?: string;
+  /** 当該科目に担当講師がいるか（講習提案書） */
+  hasAssignee?: boolean;
+  /** 当該科目の担当講師名（講習提案書） */
+  assigneeName?: string;
 };
 
 export type TeacherOverviewStudentRow = {
@@ -518,82 +526,118 @@ export function getCourseProposalTeacherOverview(
   );
   const campusCache = buildStudentTeacherCampusCache(assignmentRows);
 
-  const byTeacher = new Map<string, TeacherOverviewTeacherGroup>();
+  type SubjectAssignee = { teacherId: string; teacherName: string };
+  const assigneesByStudent = new Map<
+    string,
+    Map<string, SubjectAssignee>
+  >();
+  const studentMeta = new Map<
+    string,
+    {
+      studentName: string;
+      grade: string;
+      teacherDefaultCampus: string | null;
+      studentCampus: string | null;
+    }
+  >();
 
   for (const row of assignmentRows) {
-    const programSheet = db
-      .select({ campus: schema.programSheets.campus })
-      .from(schema.programSheets)
-      .where(
-        and(
-          eq(schema.programSheets.studentId, row.studentId),
-          eq(schema.programSheets.subject, row.subject),
-          eq(schema.programSheets.teacherId, row.teacherId),
-        ),
-      )
-      .orderBy(desc(schema.programSheets.updatedAt))
-      .all()[0];
+    studentMeta.set(row.studentId, {
+      studentName: row.studentName,
+      grade: row.grade,
+      teacherDefaultCampus: row.teacherDefaultCampus,
+      studentCampus: row.studentCampus,
+    });
+    const bySubject =
+      assigneesByStudent.get(row.studentId) ??
+      (() => {
+        const created = new Map<string, SubjectAssignee>();
+        assigneesByStudent.set(row.studentId, created);
+        return created;
+      })();
+    bySubject.set(row.subject, {
+      teacherId: row.teacherId,
+      teacherName: row.teacherName,
+    });
+  }
 
-    const campusKey = `${row.studentId}:${row.teacherId}`;
-    const sheetCampus = resolveOverviewSheetCampus(
-      programSheet?.campus,
-      row.teacherDefaultCampus,
-      row.studentCampus,
-      campusCache.get(campusKey),
-    );
+  const students: TeacherOverviewStudentRow[] = [];
+
+  for (const [studentId, meta] of studentMeta) {
+    const assignees = assigneesByStudent.get(studentId) ?? new Map();
+    const firstAssignee = [...assignees.values()][0];
+    const campusKey = firstAssignee
+      ? `${studentId}:${firstAssignee.teacherId}`
+      : "";
+
+    let sheetCampus = campusCache.get(campusKey) ?? "";
+    if (!sheetCampus && firstAssignee) {
+      const programSheet = db
+        .select({ campus: schema.programSheets.campus })
+        .from(schema.programSheets)
+        .where(
+          and(
+            eq(schema.programSheets.studentId, studentId),
+            eq(schema.programSheets.teacherId, firstAssignee.teacherId),
+          ),
+        )
+        .orderBy(desc(schema.programSheets.updatedAt))
+        .all()[0];
+      sheetCampus = resolveOverviewSheetCampus(
+        programSheet?.campus,
+        meta.teacherDefaultCampus,
+        meta.studentCampus,
+      );
+    }
 
     if (!matchesTeacherOverviewCampusFilter(campusFilter, sheetCampus)) continue;
 
-    const group =
-      byTeacher.get(row.teacherId) ??
-      (() => {
-        const created: TeacherOverviewTeacherGroup = {
-          teacherId: row.teacherId,
-          teacherName: row.teacherName,
-          students: [],
-        };
-        byTeacher.set(row.teacherId, created);
-        return created;
-      })();
+    const proposalSheet = db
+      .select()
+      .from(schema.courseProposalSheets)
+      .where(
+        and(
+          eq(schema.courseProposalSheets.studentId, studentId),
+          eq(schema.courseProposalSheets.year, year),
+          eq(schema.courseProposalSheets.season, season),
+        ),
+      )
+      .get();
 
-    let studentRow = group.students.find(
-      (student) => student.studentId === row.studentId,
+    const subjects = parseCourseProposalSubjectsJson(
+      proposalSheet?.subjectsJson,
     );
 
-    if (!studentRow) {
-      const proposalSheet = db
-        .select()
-        .from(schema.courseProposalSheets)
-        .where(
-          and(
-            eq(schema.courseProposalSheets.studentId, row.studentId),
-            eq(schema.courseProposalSheets.year, year),
-            eq(schema.courseProposalSheets.season, season),
-          ),
-        )
-        .get();
-
-      const subjects = parseCourseProposalSubjectsJson(
-        proposalSheet?.subjectsJson,
-      );
-
-      studentRow = {
-        studentId: row.studentId,
-        studentName: row.studentName,
-        grade: row.grade,
-        subject: "",
-        teacherId: row.teacherId,
-        sheetId: proposalSheet?.id ?? null,
-        sheetCampus,
-        months: COURSE_PROPOSAL_SUBJECTS.map((subject) => ({
+    students.push({
+      studentId,
+      studentName: meta.studentName,
+      grade: meta.grade,
+      subject: "",
+      teacherId: firstAssignee?.teacherId ?? "",
+      sheetId: proposalSheet?.id ?? null,
+      sheetCampus,
+      months: COURSE_PROPOSAL_SUBJECTS.map((subject) => {
+        const assignee = assignees.get(subject);
+        return {
           yearMonth: subject,
           monthLabel: subject,
           filled: courseProposalSubjectHasContent(subjects[subject]),
-        })),
-      };
-      group.students.push(studentRow);
-    }
+          advice: trimOrEmpty(subjects[subject]?.advice),
+          sessionCount: trimOrEmpty(subjects[subject]?.sessionCount),
+          hasAssignee: Boolean(assignee),
+          assigneeName: assignee?.teacherName ?? "",
+        };
+      }),
+    });
   }
 
-  return sortTeacherGroups([...byTeacher.values()]);
+  return [
+    {
+      teacherId: "course-proposal-students",
+      teacherName: "",
+      students: students.sort((a, b) =>
+        a.studentName.localeCompare(b.studentName, "ja"),
+      ),
+    },
+  ];
 }

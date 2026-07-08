@@ -141,7 +141,7 @@ function TestResultPanel({
   };
 
   return (
-    <div ref={panelRef} className="month-box-result-panel">
+    <div ref={panelRef} className="month-box-result-panel" onMouseDown={(e) => e.stopPropagation()}>
       <div className="month-box-result-title">{testLabel}</div>
       <div className="space-y-1.5">
         <div className="month-box-result-heading">偏差値</div>
@@ -192,6 +192,16 @@ function TestResultPanel({
             />
           </label>
         </div>
+        <label className="month-box-result-new-class flex flex-col gap-1">
+          <span className="month-box-result-heading">新クラス</span>
+          <input
+            className={fieldClass}
+            value={form.newClass}
+            readOnly={!editable}
+            placeholder="例: α1"
+            onChange={(e) => updateField("newClass", e.target.value)}
+          />
+        </label>
         {form.extraScores.map((row, index) => (
           <label
             key={`extra-${index}`}
@@ -314,6 +324,7 @@ function MonthBoxSlot({
       )}
       <MonthBox
         month={month}
+        row={row}
         editable={editable}
         onMonthChange={onMonthChange}
         onTestsChange={onTestsChange}
@@ -413,6 +424,7 @@ function StartBox({
 
 function MonthBox({
   month,
+  row,
   editable,
   onMonthChange,
   onTestsChange,
@@ -423,6 +435,7 @@ function MonthBox({
   defaultCramSchool,
 }: {
   month: ProgramMonthData;
+  row: "top" | "bottom";
   editable?: boolean;
   onMonthChange?: ProgramSheetProps["onMonthChange"];
   onTestsChange?: ProgramSheetProps["onTestsChange"];
@@ -473,6 +486,7 @@ function MonthBox({
     setResultForm(
       test?.result
         ? {
+            ...EMPTY_TEST_RESULT,
             ...test.result,
             extraScores: test.result.extraScores ?? [],
           }
@@ -543,7 +557,9 @@ function MonthBox({
   const storedResult = activeResultTest?.result;
   const hasStoredResult = Boolean(
     storedResult &&
-      (hasScoreResult(storedResult) || storedResult.notes.trim() !== ""),
+      (hasScoreResult(storedResult) ||
+        storedResult.notes.trim() !== "" ||
+        storedResult.newClass?.trim() !== ""),
   );
 
   const toggleTest = (testId: string, checked: boolean) => {
@@ -599,7 +615,7 @@ function MonthBox({
 
   return (
     <div
-      className={`month-box flex min-w-0 flex-col overflow-hidden border border-neutral-800 bg-white${testsEditOpen ? " month-box--tests-open" : ""}${resultTestId ? " month-box--result-open" : ""}`}
+      className={`month-box flex min-w-0 flex-col overflow-hidden border border-neutral-800 bg-white${row === "bottom" ? " month-box--bottom-row" : ""}${testsEditOpen ? " month-box--tests-open" : ""}${resultTestId ? " month-box--result-open" : ""}`}
     >
       <div className="month-box-header shrink-0 bg-[#1e3a5f] px-1 py-1 text-center text-[10px] leading-snug font-bold text-white">
         {editable ? (
@@ -666,7 +682,10 @@ function MonthBox({
                 {testsEditOpen ? "閉じる" : "テスト編集"}
               </button>
               {testsEditOpen && (
-                <div className="month-box-test-panel">
+                <div
+                  className="month-box-test-panel"
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
                   {month.tests.map((t) => (
                     <label
                       key={`selected-${t.id}`}

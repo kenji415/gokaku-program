@@ -32,12 +32,16 @@ type Props = {
   onUnassigned?: () => void;
   onGraduated?: () => void;
   saveFlushRef?: MutableRefObject<(() => Promise<boolean>) | null>;
+  refreshKey?: number;
 };
 
 const fieldClass =
   "w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm";
 
-function buildPayload(info: StudentBasicInfo) {
+function buildPayload(
+  info: StudentBasicInfo,
+  classNameLocked: boolean,
+) {
   return {
     name: normalizeStudentName(info.name),
     gender: info.gender,
@@ -45,6 +49,7 @@ function buildPayload(info: StudentBasicInfo) {
     cramSchool: info.cramSchool,
     campus: info.campus,
     className: info.className,
+    ...(classNameLocked ? { classNameLocked: true } : {}),
     mockExamPattern: info.mockExamPattern,
     targetSchool: info.targetSchool,
     assignments: info.assignments
@@ -73,6 +78,7 @@ export function TeacherStudentBasicInfo({
   onUnassigned,
   onGraduated,
   saveFlushRef,
+  refreshKey = 0,
 }: Props) {
   const [info, setInfo] = useState<StudentBasicInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -82,6 +88,7 @@ export function TeacherStudentBasicInfo({
   const [graduating, setGraduating] = useState(false);
   const testScheduleCramSchools = useTestScheduleCramSchoolNames();
   const infoRef = useRef<StudentBasicInfo | null>(null);
+  const classNameLockedRef = useRef(false);
   const savedIdRef = useRef<string | null>(null);
   const skipNameLookupRef = useRef(false);
 
@@ -110,6 +117,7 @@ export function TeacherStudentBasicInfo({
       .then((data) => {
         if (!cancelled) {
           skipNameLookupRef.current = true;
+          classNameLockedRef.current = data.classNameLocked;
           setInfo(data);
         }
       })
@@ -123,7 +131,7 @@ export function TeacherStudentBasicInfo({
     return () => {
       cancelled = true;
     };
-  }, [studentId, isNew]);
+  }, [studentId, isNew, refreshKey]);
 
   useEffect(() => {
     const name = info?.name.trim();
@@ -160,6 +168,14 @@ export function TeacherStudentBasicInfo({
     bumpSave();
   };
 
+  const updateClassName = (value: string) => {
+    classNameLockedRef.current = true;
+    setInfo((prev) =>
+      prev ? { ...prev, className: value, classNameLocked: true } : prev,
+    );
+    bumpSave();
+  };
+
   const updateAssignment = (
     subject: string,
     nextTeacherId: string,
@@ -188,7 +204,7 @@ export function TeacherStudentBasicInfo({
     if (!current) return false;
     if (!current.name.trim()) return true;
 
-    const payload = buildPayload(current);
+    const payload = buildPayload(current, classNameLockedRef.current);
     const targetId = savedIdRef.current;
 
     if (!targetId) {
@@ -208,6 +224,7 @@ export function TeacherStudentBasicInfo({
       const saved = (await res.json()) as StudentBasicInfo;
       savedIdRef.current = saved.id;
       skipNameLookupRef.current = true;
+      classNameLockedRef.current = saved.classNameLocked;
       setInfo(saved);
       onStudentCreated?.({
         id: saved.id,
@@ -231,6 +248,7 @@ export function TeacherStudentBasicInfo({
 
     const saved = (await res.json()) as StudentBasicInfo;
     skipNameLookupRef.current = true;
+    classNameLockedRef.current = saved.classNameLocked;
     setInfo(saved);
     onSaved?.(saved);
     return true;
@@ -374,7 +392,7 @@ export function TeacherStudentBasicInfo({
               <input
                 className={fieldClass}
                 value={info.className}
-                onChange={(e) => updateField("className", e.target.value)}
+                onChange={(e) => updateClassName(e.target.value)}
               />
             </label>
             <label className="block min-w-0 text-sm">
