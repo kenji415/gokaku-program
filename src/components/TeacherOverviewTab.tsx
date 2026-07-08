@@ -153,7 +153,14 @@ export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
 
   const courseProposalStudents = useMemo(() => {
     if (sheetKind !== "course-proposal") return [];
-    return filteredTeachers.flatMap((teacher) => teacher.students);
+    const uniqueByStudentId = new Map<string, TeacherOverviewStudentRow>();
+    for (const student of filteredTeachers.flatMap((teacher) => teacher.students)) {
+      // API側で同一生徒が重複して返ってきても、一覧表示は1行に保つ。
+      if (!uniqueByStudentId.has(student.studentId)) {
+        uniqueByStudentId.set(student.studentId, student);
+      }
+    }
+    return [...uniqueByStudentId.values()];
   }, [filteredTeachers, sheetKind]);
 
   const hasActiveSearch =
