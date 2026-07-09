@@ -1729,6 +1729,22 @@ body {
   font-weight: 600;
 }
 
+.course-proposal-header-table td,
+.course-proposal-subject-head,
+.course-proposal-subject-meta-value {
+  font-family:
+    var(--font-program-header),
+    "Hiragino Kyokasho ProN",
+    "Hiragino Kyokasho Pro",
+    "UD Digi Kyokasho",
+    "Yu Kyokasho",
+    "游教科書体",
+    "Yu Mincho",
+    "Hiragino Mincho ProN",
+    serif;
+  font-feature-settings: "palt" 1;
+}
+
 .course-proposal-title-block {
   flex-shrink: 0;
   display: flex;

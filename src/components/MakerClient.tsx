@@ -19,6 +19,7 @@ import { buildPdfFilename, buildFinalStretchPdfFilename, buildCourseProposalPdfF
 import { savePdfFromResponse } from "@/lib/client-pdf-download";
 import type {
   MakerStudentListItem,
+  ProgramMonthTestPoolItem,
   ProgramSheetData,
   StudentTestResultInput,
 } from "@/lib/programs";
@@ -132,7 +133,7 @@ export function MakerClient({
     useState<CourseProposalSeason>(initialMakerState.courseProposalSeason);
   const [courseProposalLoadError, setCourseProposalLoadError] = useState("");
   const [allTestsForMonth, setAllTestsForMonth] = useState<
-    Record<string, { id: string; displayText: string }[]>
+    Record<string, ProgramMonthTestPoolItem[]>
   >({});
   const [saving, setSaving] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -747,7 +748,7 @@ export function MakerClient({
 
       const data = (await res.json()) as {
         sheet: ProgramSheetData;
-        allTestsForMonth: Record<string, { id: string; displayText: string }[]>;
+        allTestsForMonth: Record<string, ProgramMonthTestPoolItem[]>;
       };
 
       if (requestId !== loadSeqRef.current) return;
@@ -1060,13 +1061,18 @@ export function MakerClient({
       id: string;
       displayText: string;
       yearMonth: string;
+      cramSchool: string;
     };
 
     const targetMonth = yearMonth;
     setAllTestsForMonth((prev) => {
       const list = [...(prev[targetMonth] ?? [])];
       if (!list.some((t) => t.id === created.id)) {
-        list.push({ id: created.id, displayText: created.displayText });
+        list.push({
+          id: created.id,
+          displayText: created.displayText,
+          cramSchool: created.cramSchool?.trim() ?? cramSchool.trim(),
+        });
         list.sort((a, b) => a.displayText.localeCompare(b.displayText, "ja"));
       }
       return { ...prev, [targetMonth]: list };

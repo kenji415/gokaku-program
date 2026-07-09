@@ -39,6 +39,12 @@ export type ProgramMonthData = {
   }[];
 };
 
+export type ProgramMonthTestPoolItem = {
+  id: string;
+  displayText: string;
+  cramSchool: string;
+};
+
 function timelineLabelFromYearMonth(yearMonth: string): string {
   const { year, month } = parseYearMonth(yearMonth);
   return `${year}.${String(month).padStart(2, "0")}`;
@@ -445,10 +451,10 @@ export function getAllTestsForMonth(yearMonth: string) {
 
 export function getAllTestsForYearMonths(
   yearMonths: string[],
-): Record<string, { id: string; displayText: string }[]> {
+): Record<string, ProgramMonthTestPoolItem[]> {
   const uniqueMonths = [...new Set(yearMonths)];
   const rows = getCachedTestSchedules();
-  const result: Record<string, { id: string; displayText: string }[]> = {};
+  const result: Record<string, ProgramMonthTestPoolItem[]> = {};
 
   for (const yearMonth of uniqueMonths) {
     result[yearMonth] = sortTestSchedulesByGradeDesc(
@@ -460,6 +466,7 @@ export function getAllTestsForYearMonths(
     ).map((t) => ({
       id: t.id,
       displayText: formatTestScheduleDisplayText(t),
+      cramSchool: t.cramSchool?.trim() ?? "",
     }));
   }
 
@@ -470,13 +477,13 @@ export function getAllTestsForYearMonths(
 export function getProgramTestCandidatesForMonths(
   grade: string,
   yearMonths: string[],
-): Record<string, { id: string; displayText: string }[]> {
+): Record<string, ProgramMonthTestPoolItem[]> {
   const rows = getCachedTestSchedules().filter(
     (row) =>
       row.grade === grade &&
       hasFullTestScheduleDay(row.testDate),
   );
-  const result: Record<string, { id: string; displayText: string }[]> = {};
+  const result: Record<string, ProgramMonthTestPoolItem[]> = {};
 
   for (const yearMonth of [...new Set(yearMonths)]) {
     result[yearMonth] = sortTestSchedulesByGradeDesc(
@@ -484,6 +491,7 @@ export function getProgramTestCandidatesForMonths(
     ).map((t) => ({
       id: t.id,
       displayText: formatTestScheduleDisplayText(t),
+      cramSchool: t.cramSchool?.trim() ?? "",
     }));
   }
 

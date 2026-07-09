@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { ProgramMonthData, StudentTestResultInput } from "@/lib/programs";
+import type { ProgramMonthData, ProgramMonthTestPoolItem, StudentTestResultInput } from "@/lib/programs";
 import {
   EMPTY_TEST_RESULT,
   formatTestResultScores,
@@ -64,8 +64,8 @@ type ProgramSheetProps = {
     testScheduleId: string,
     result: StudentTestResultInput,
   ) => Promise<boolean>;
-  availableTests?: Record<string, { id: string; displayText: string }[]>;
-  allTestsForMonth?: Record<string, { id: string; displayText: string }[]>;
+  availableTests?: Record<string, ProgramMonthTestPoolItem[]>;
+  allTestsForMonth?: Record<string, ProgramMonthTestPoolItem[]>;
 };
 
 function monthBoxOnRow(index: number, row: "top" | "bottom"): boolean {
@@ -303,7 +303,7 @@ function MonthBoxSlot({
   onTestsChange?: ProgramSheetProps["onTestsChange"];
   onTestCreate?: ProgramSheetProps["onTestCreate"];
   onTestResultSave?: ProgramSheetProps["onTestResultSave"];
-  tests: { id: string; displayText: string }[];
+  tests: ProgramMonthTestPoolItem[];
   defaultGrade: string;
   defaultCramSchool: string;
 }) {
@@ -441,7 +441,7 @@ function MonthBox({
   onTestsChange?: ProgramSheetProps["onTestsChange"];
   onTestCreate?: ProgramSheetProps["onTestCreate"];
   onTestResultSave?: ProgramSheetProps["onTestResultSave"];
-  tests: { id: string; displayText: string }[];
+  tests: ProgramMonthTestPoolItem[];
   defaultGrade: string;
   defaultCramSchool: string;
 }) {
@@ -648,11 +648,14 @@ function MonthBox({
             {visibleTests.length > 0
               ? visibleTests.map((t) => {
                   const scores = t.result ? formatTestResultScores(t.result) : "";
+                  const hasEnteredScores = Boolean(
+                    t.result && hasScoreResult(t.result),
+                  );
                   return (
                     <button
                       key={t.id}
                       type="button"
-                      className="month-box-test-line block w-full text-left text-[9px] leading-tight text-red-600 underline decoration-dotted underline-offset-2"
+                      className={`month-box-test-line block w-full text-left text-[9px] leading-tight underline decoration-dotted underline-offset-2 ${hasEnteredScores ? "text-blue-700" : "text-red-600"}`}
                       onClick={() => openResultPanel(t.id)}
                     >
                       <span>{t.displayText}</span>
@@ -717,7 +720,14 @@ function MonthBox({
                         checked={false}
                         onChange={(e) => toggleTest(t.id, e.target.checked)}
                       />
-                      <span>{t.displayText}</span>
+                      <span className="min-w-0">
+                        {t.cramSchool.trim() ? (
+                          <span className="mr-1 shrink-0 text-gray-700">
+                            {t.cramSchool.trim()}
+                          </span>
+                        ) : null}
+                        {t.displayText}
+                      </span>
                     </label>
                   ))}
                   {month.tests.length === 0 &&

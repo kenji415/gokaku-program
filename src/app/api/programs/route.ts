@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import {
   findOrCreateProgramSheet,
   getProgramTestCandidatesForMonths,
+  type ProgramMonthTestPoolItem,
 } from "@/lib/programs";
 import { userCanViewProgramSheet } from "@/lib/teacher-overview";
 import { buildMonthSlots } from "@/lib/months";
@@ -71,7 +72,7 @@ export async function POST(request: Request) {
     .get();
 
   const slots = buildMonthSlots(body.startYearMonth);
-  const allTestsForMonth: Record<string, { id: string; displayText: string }[]> =
+  const allTestsForMonth: Record<string, ProgramMonthTestPoolItem[]> =
     student
       ? getProgramTestCandidatesForMonths(
           student.grade,

@@ -72,5 +72,6 @@ export async function POST(request: Request) {
     id,
     displayText: derived.displayText,
     yearMonth,
+    cramSchool,
   });
 }
