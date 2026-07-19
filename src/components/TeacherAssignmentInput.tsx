@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   filterTeacherOptions,
+  findExactTeacherOption,
   type TeacherOption,
 } from "@/lib/teacher-assignment";
 
@@ -10,6 +11,7 @@ type Props = {
   teacherId: string;
   teacherName: string;
   options: TeacherOption[];
+  selfTeacherId?: string;
   onChange: (teacherId: string, teacherName: string) => void;
   className?: string;
   placeholder?: string;
@@ -19,6 +21,7 @@ export function TeacherAssignmentInput({
   teacherId,
   teacherName,
   options,
+  selfTeacherId,
   onChange,
   className = "",
   placeholder = "講師名を入力",
@@ -27,14 +30,23 @@ export function TeacherAssignmentInput({
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
+  const focusedRef = useRef(false);
 
   useEffect(() => {
+    if (focusedRef.current) return;
     setInputValue(teacherName);
   }, [teacherName, teacherId]);
 
+  const orderedOptions = useMemo(() => {
+    if (!selfTeacherId) return options;
+    const self = options.find((teacher) => teacher.id === selfTeacherId);
+    if (!self) return options;
+    return [self, ...options.filter((teacher) => teacher.id !== selfTeacherId)];
+  }, [options, selfTeacherId]);
+
   const candidates = useMemo(
-    () => filterTeacherOptions(options, inputValue),
-    [options, inputValue],
+    () => filterTeacherOptions(orderedOptions, inputValue),
+    [orderedOptions, inputValue],
   );
 
   useEffect(() => {
@@ -63,6 +75,23 @@ export function TeacherAssignmentInput({
     setOpen(false);
   };
 
+  const commitOrRevert = () => {
+    const trimmed = inputValue.trim();
+    if (!trimmed) {
+      clearTeacher();
+      return;
+    }
+
+    const exact = findExactTeacherOption(options, trimmed);
+    if (exact) {
+      selectTeacher(exact);
+      return;
+    }
+
+    // 途中入力のまま blur したら表示を確定済みの講師名に戻す
+    setInputValue(teacherName);
+  };
+
   return (
     <div ref={containerRef} className="relative min-w-0 flex-1">
       <input
@@ -75,23 +104,25 @@ export function TeacherAssignmentInput({
           setInputValue(nextValue);
           setOpen(true);
 
-          const exact = options.find((teacher) => teacher.name === nextValue);
+          const exact = findExactTeacherOption(options, nextValue);
           if (exact) {
             onChange(exact.id, exact.name);
-            return;
           }
-
-          const matches = filterTeacherOptions(options, nextValue, 2);
-          if (matches.length === 1 && nextValue.trim()) {
-            onChange(matches[0].id, matches[0].name);
-            return;
-          }
-
-          onChange(teacherId, nextValue);
         }}
-        onFocus={() => setOpen(true)}
+        onFocus={() => {
+          focusedRef.current = true;
+          setOpen(true);
+        }}
+        onBlur={() => {
+          focusedRef.current = false;
+          commitOrRevert();
+          setOpen(false);
+        }}
         onKeyDown={(event) => {
-          if (!open || candidates.length === 0) return;
+          if (!open || candidates.length === 0) {
+            if (event.key === "Escape") setOpen(false);
+            return;
+          }
 
           if (event.key === "ArrowDown") {
             event.preventDefault();

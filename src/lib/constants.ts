@@ -1,5 +1,11 @@
 export const SUBJECTS = ["算数", "国語", "理科", "社会", "数学", "英語"] as const;
 
+export type Subject = (typeof SUBJECTS)[number];
+
+export function isFixedSubject(subject: string): boolean {
+  return (SUBJECTS as readonly string[]).includes(subject.trim());
+}
+
 export const GRADES = [
   "6年",
   "5年",

@@ -7,7 +7,6 @@ import { EXAM_DR_CAMPUS_NAMES } from "@/lib/constants";
 import {
   COURSE_PROPOSAL_SEASON_LABELS,
   COURSE_PROPOSAL_SEASONS,
-  COURSE_PROPOSAL_SUBJECTS,
   defaultCourseProposalSeason,
   defaultCourseProposalYear,
   type CourseProposalSeason,
@@ -70,14 +69,27 @@ export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [openingId, setOpeningId] = useState<string | null>(null);
+  const [openError, setOpenError] = useState("");
   const [teacherQuery, setTeacherQuery] = useState("");
   const [studentQuery, setStudentQuery] = useState("");
   const [campusFilter, setCampusFilter] = useState("");
 
-  const columnHeaders = useMemo(
-    () => teachers[0]?.students[0]?.months ?? [],
-    [teachers],
-  );
+  const columnHeaders = useMemo(() => {
+    if (sheetKind !== "course-proposal") {
+      return teachers[0]?.students[0]?.months ?? [];
+    }
+    const bySubject = new Map<string, TeacherOverviewStudentRow["months"][number]>();
+    for (const teacher of teachers) {
+      for (const student of teacher.students) {
+        for (const column of student.months) {
+          if (!bySubject.has(column.yearMonth)) {
+            bySubject.set(column.yearMonth, column);
+          }
+        }
+      }
+    }
+    return [...bySubject.values()];
+  }, [teachers, sheetKind]);
 
   const teacherNameOptions = useMemo(() => {
     if (sheetKind === "course-proposal") {
@@ -211,6 +223,7 @@ export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
         ? row.studentId
         : `${row.teacherId}:${row.studentId}:${row.subject}`;
     setOpeningId(rowKey);
+    setOpenError("");
 
     try {
       if (sheetKind === "program") {
@@ -225,7 +238,10 @@ export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
               startYearMonth,
             }),
           });
-          if (!res.ok) return;
+          if (!res.ok) {
+            setOpenError("シートを開けませんでした。権限または通信エラーの可能性があります。");
+            return;
+          }
         }
 
         const params = new URLSearchParams({
@@ -233,6 +249,8 @@ export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
           subject: row.subject,
           month: startYearMonth,
           tab: "program",
+          name: row.studentName,
+          grade: row.grade,
         });
         router.push(`/maker?${params.toString()}`);
         return;
@@ -248,12 +266,17 @@ export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
             teacherId: row.teacherId,
           }),
         });
-        if (!res.ok) return;
+        if (!res.ok) {
+          setOpenError("直前期シートを開けませんでした。権限または通信エラーの可能性があります。");
+          return;
+        }
 
         const params = new URLSearchParams({
           student: row.studentId,
           subject: row.subject,
           tab: "final-stretch",
+          name: row.studentName,
+          grade: row.grade,
         });
         router.push(`/maker?${params.toString()}`);
         return;
@@ -269,13 +292,18 @@ export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
           season: proposalSeason,
         }),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        setOpenError("講習提案書を開けませんでした。権限または通信エラーの可能性があります。");
+        return;
+      }
 
       const params = new URLSearchParams({
         student: row.studentId,
         tab: "course-proposal",
         proposalYear: String(proposalYear),
         proposalSeason: proposalSeason,
+        name: row.studentName,
+        grade: row.grade,
       });
       router.push(`/maker?${params.toString()}`);
     } finally {
@@ -414,6 +442,10 @@ export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
           ) : null}
         </div>
 
+        {openError ? (
+          <p className="mb-3 text-sm text-red-600">{openError}</p>
+        ) : null}
+
         {loading ? (
           <p className="py-8 text-center text-sm text-gray-500">読み込み中…</p>
         ) : error ? (
@@ -434,21 +466,21 @@ export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
                   <th className="sticky left-0 z-10 bg-gray-50 px-2 py-2 font-medium">
                     生徒
                   </th>
-                  {COURSE_PROPOSAL_SUBJECTS.flatMap((subject) => [
+                  {columnHeaders.flatMap((column) => [
                     <th
-                      key={`${subject}-advice`}
+                      key={`${column.yearMonth}-advice`}
                       className="min-w-[7rem] px-1.5 py-1.5 text-center font-medium"
                     >
-                      {subject}
+                      {column.monthLabel}
                       <span className="mt-0.5 block text-[10px] font-normal text-gray-500">
                         提案内容
                       </span>
                     </th>,
                     <th
-                      key={`${subject}-count`}
+                      key={`${column.yearMonth}-count`}
                       className="w-12 px-1.5 py-1.5 text-center font-medium"
                     >
-                      {subject}
+                      {column.monthLabel}
                       <span className="mt-0.5 block text-[10px] font-normal text-gray-500">
                         コマ数
                       </span>
@@ -477,25 +509,30 @@ export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
                           </span>
                         </button>
                       </td>
-                      {student.months.flatMap((column) => [
-                        <td
-                          key={`${column.yearMonth}-advice`}
-                          className={`max-w-[10rem] px-1.5 py-1.5 align-top text-[10px] leading-snug whitespace-pre-wrap ${courseProposalCellClass(column.hasAssignee, column.advice) || "text-gray-800"}`}
-                        >
-                          <div>{column.advice || "—"}</div>
-                          {column.hasAssignee && column.assigneeName ? (
-                            <div className="mt-1 text-[9px] font-medium text-[#1e3a5f]">
-                              {column.assigneeName}
-                            </div>
-                          ) : null}
-                        </td>,
-                        <td
-                          key={`${column.yearMonth}-count`}
-                          className={`px-1.5 py-1.5 text-center align-top text-[10px] tabular-nums ${courseProposalCellClass(column.hasAssignee, column.sessionCount) || "text-gray-800"}`}
-                        >
-                          {column.sessionCount || "—"}
-                        </td>,
-                      ])}
+                      {columnHeaders.flatMap((header) => {
+                        const column = student.months.find(
+                          (item) => item.yearMonth === header.yearMonth,
+                        );
+                        return [
+                          <td
+                            key={`${header.yearMonth}-advice`}
+                            className={`max-w-[10rem] px-1.5 py-1.5 align-top text-[10px] leading-snug whitespace-pre-wrap ${courseProposalCellClass(column?.hasAssignee, column?.advice) || "text-gray-800"}`}
+                          >
+                            <div>{column?.advice || "—"}</div>
+                            {column?.hasAssignee && column.assigneeName ? (
+                              <div className="mt-1 text-[9px] font-medium text-[#1e3a5f]">
+                                {column.assigneeName}
+                              </div>
+                            ) : null}
+                          </td>,
+                          <td
+                            key={`${header.yearMonth}-count`}
+                            className={`px-1.5 py-1.5 text-center align-top text-[10px] tabular-nums ${courseProposalCellClass(column?.hasAssignee, column?.sessionCount) || "text-gray-800"}`}
+                          >
+                            {column?.sessionCount || "—"}
+                          </td>,
+                        ];
+                      })}
                     </tr>
                   );
                 })}

@@ -7,7 +7,7 @@ import {
   useState,
   type MutableRefObject,
 } from "react";
-import { CRAM_SCHOOL_NAMES, GENDERS, GRADES } from "@/lib/constants";
+import { CRAM_SCHOOL_NAMES, GENDERS, GRADES, isFixedSubject } from "@/lib/constants";
 import { useTestScheduleCramSchoolNames } from "@/hooks/use-test-schedule-cram-schools";
 import { formatGraduationYear } from "@/lib/graduation";
 import { useAutoSave } from "@/hooks/use-auto-save";
@@ -25,7 +25,9 @@ type StudentSummary = {
 type Props = {
   studentId: string;
   teacherId: string;
+  isAdmin?: boolean;
   isNew?: boolean;
+  initialName?: string;
   onSaved?: (info: StudentBasicInfo) => void;
   onExistingStudentFound?: (student: StudentSummary) => void;
   onStudentCreated?: (student: StudentSummary) => void;
@@ -60,18 +62,20 @@ function buildPayload(
           info.teacherOptions,
         );
         return {
-          subject: row.subject,
+          subject: row.subject.trim(),
           teacherId: resolved.teacherId,
         };
       })
-      .filter((row) => row.teacherId),
+      .filter((row) => row.teacherId && row.subject),
   };
 }
 
 export function TeacherStudentBasicInfo({
   studentId,
   teacherId,
+  isAdmin = false,
   isNew = false,
+  initialName = "",
   onSaved,
   onExistingStudentFound,
   onStudentCreated,
@@ -84,6 +88,11 @@ export function TeacherStudentBasicInfo({
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [saveRevision, setSaveRevision] = useState(0);
+  const [savingNew, setSavingNew] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [newSubjectName, setNewSubjectName] = useState("");
+  const [showUnassignHint, setShowUnassignHint] = useState(false);
+  const [showGraduateHint, setShowGraduateHint] = useState(false);
   const [unassigning, setUnassigning] = useState(false);
   const [graduating, setGraduating] = useState(false);
   const testScheduleCramSchools = useTestScheduleCramSchoolNames();
@@ -118,7 +127,9 @@ export function TeacherStudentBasicInfo({
         if (!cancelled) {
           skipNameLookupRef.current = true;
           classNameLockedRef.current = data.classNameLocked;
-          setInfo(data);
+          setInfo(
+            isNew && initialName ? { ...data, name: initialName } : data,
+          );
         }
       })
       .catch(() => {
@@ -131,7 +142,7 @@ export function TeacherStudentBasicInfo({
     return () => {
       cancelled = true;
     };
-  }, [studentId, isNew, refreshKey]);
+  }, [studentId, isNew, refreshKey, initialName]);
 
   useEffect(() => {
     const name = info?.name.trim();
@@ -199,6 +210,93 @@ export function TeacherStudentBasicInfo({
     bumpSave();
   };
 
+  const updateCustomSubjectName = (index: number, nextSubject: string) => {
+    setInfo((prev) => {
+      if (!prev) return prev;
+      const current = prev.assignments[index];
+      if (!current || isFixedSubject(current.subject)) return prev;
+
+      const trimmed = nextSubject.trim();
+      const duplicate = prev.assignments.some(
+        (row, i) => i !== index && row.subject === trimmed,
+      );
+      if (trimmed && duplicate) return prev;
+
+      return {
+        ...prev,
+        assignments: prev.assignments.map((row, i) =>
+          i === index ? { ...row, subject: nextSubject } : row,
+        ),
+      };
+    });
+  };
+
+  const commitCustomSubjectName = (index: number) => {
+    setInfo((prev) => {
+      if (!prev) return prev;
+      const current = prev.assignments[index];
+      if (!current || isFixedSubject(current.subject)) return prev;
+
+      const trimmed = current.subject.trim();
+      if (!trimmed) {
+        return {
+          ...prev,
+          assignments: prev.assignments.filter((_, i) => i !== index),
+        };
+      }
+
+      const duplicate = prev.assignments.some(
+        (row, i) => i !== index && row.subject === trimmed,
+      );
+      if (duplicate) {
+        window.alert("同じ科目名が既にあります");
+        return prev;
+      }
+
+      return {
+        ...prev,
+        assignments: prev.assignments.map((row, i) =>
+          i === index ? { ...row, subject: trimmed } : row,
+        ),
+      };
+    });
+    bumpSave();
+  };
+
+  const addCustomSubject = () => {
+    const trimmed = newSubjectName.trim();
+    if (!trimmed) return;
+    if (!info) return;
+    if (info.assignments.some((row) => row.subject === trimmed)) {
+      window.alert("同じ科目名が既にあります");
+      return;
+    }
+    setInfo((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        assignments: [
+          ...prev.assignments,
+          { subject: trimmed, teacherId: "", teacherName: "" },
+        ],
+      };
+    });
+    setNewSubjectName("");
+  };
+
+  const removeCustomSubject = (index: number) => {
+    setInfo((prev) => {
+      if (!prev) return prev;
+      const current = prev.assignments[index];
+      if (!current || isFixedSubject(current.subject)) return prev;
+      return {
+        ...prev,
+        assignments: prev.assignments.filter((_, i) => i !== index),
+      };
+    });
+    bumpSave();
+  };
+
   const persist = useCallback(async (): Promise<boolean> => {
     const current = infoRef.current;
     if (!current) return false;
@@ -254,19 +352,97 @@ export function TeacherStudentBasicInfo({
     return true;
   }, [onExistingStudentFound, onSaved, onStudentCreated]);
 
-  const { statusLabel, flush } = useAutoSave(persist, saveRevision);
+  const { statusLabel, flush } = useAutoSave(persist, saveRevision, {
+    enabled: !isNew,
+  });
 
   useEffect(() => {
     if (!saveFlushRef) return;
-    saveFlushRef.current = flush;
+    saveFlushRef.current = isNew ? async () => true : flush;
     return () => {
       saveFlushRef.current = null;
     };
-  }, [flush, saveFlushRef]);
+  }, [flush, saveFlushRef, isNew]);
 
   const hasSelfAssignment = info?.assignments.some(
     (row) => row.teacherId === teacherId,
   );
+  const hasAnyAssignment = info?.assignments.some((row) => row.teacherId);
+
+  const unassignHintKey = `maker:unassignHintSeen:${teacherId}`;
+
+  useEffect(() => {
+    if (isNew || !hasSelfAssignment || info?.graduatedAt) return;
+    try {
+      if (!window.localStorage.getItem(unassignHintKey)) {
+        setShowUnassignHint(true);
+      }
+    } catch {
+      // localStorage 利用不可時は案内を出さない
+    }
+  }, [isNew, hasSelfAssignment, info?.graduatedAt, unassignHintKey]);
+
+  const dismissUnassignHint = useCallback(() => {
+    setShowUnassignHint(false);
+    try {
+      window.localStorage.setItem(unassignHintKey, "1");
+    } catch {
+      // 保存できなくても無視
+    }
+  }, [unassignHintKey]);
+
+  const graduateHintKey = `maker:graduateHintSeen:${teacherId}`;
+
+  useEffect(() => {
+    if (isNew || info?.graduatedAt) return;
+    try {
+      if (!window.localStorage.getItem(graduateHintKey)) {
+        setShowGraduateHint(true);
+      }
+    } catch {
+      // localStorage 利用不可時は案内を出さない
+    }
+  }, [isNew, info?.graduatedAt, graduateHintKey]);
+
+  const dismissGraduateHint = useCallback(() => {
+    setShowGraduateHint(false);
+    try {
+      window.localStorage.setItem(graduateHintKey, "1");
+    } catch {
+      // 保存できなくても無視
+    }
+  }, [graduateHintKey]);
+
+  const canRegisterNew =
+    Boolean(info?.name.trim()) &&
+    (isAdmin ? Boolean(hasAnyAssignment) : Boolean(hasSelfAssignment));
+
+  const handleManualSave = async () => {
+    const current = infoRef.current;
+    if (!current) return;
+    if (!current.name.trim()) {
+      setSaveError("氏名を入力してください");
+      return;
+    }
+    if (!canRegisterNew) {
+      setSaveError(
+        isAdmin
+          ? "担当講師を1科目以上設定してください"
+          : "自分を担当講師として1科目以上に設定してください",
+      );
+      return;
+    }
+    setSaveError("");
+    setSavingNew(true);
+    try {
+      const ok = await persist();
+      if (!ok) setSaveError("保存に失敗しました");
+    } catch {
+      setSaveError("保存に失敗しました");
+    } finally {
+      setSavingNew(false);
+    }
+  };
 
   const handleUnassign = async () => {
     const targetId = savedIdRef.current;
@@ -344,8 +520,30 @@ export function TeacherStudentBasicInfo({
               氏名・学年・塾・校舎・クラス・テストパターン・志望校・担当講師は講師間で共通です。校舎・クラスは集団塾の通塾情報です（シート右上の受験Dr.校舎とは別）。
             </p>
           </div>
-          {statusLabel && (
-            <span className="text-xs text-green-700">{statusLabel}</span>
+          {isNew ? (
+            <div className="flex shrink-0 flex-col items-end gap-1">
+              <button
+                type="button"
+                className="rounded bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#2a4f7a] disabled:opacity-50"
+                onClick={() => void handleManualSave()}
+                disabled={savingNew || !canRegisterNew}
+              >
+                {savingNew ? "保存中…" : "保存"}
+              </button>
+              {saveError ? (
+                <span className="text-xs text-red-600">{saveError}</span>
+              ) : (
+                <span className="text-xs text-gray-500">
+                  {isAdmin
+                    ? "担当講師を設定すると保存できます"
+                    : "自分を担当科目に設定すると保存できます"}
+                </span>
+              )}
+            </div>
+          ) : (
+            statusLabel && (
+              <span className="text-xs text-green-700">{statusLabel}</span>
+            )
           )}
         </div>
 
@@ -472,26 +670,77 @@ export function TeacherStudentBasicInfo({
               科目別担当講師
             </legend>
             <p className="mb-3 text-xs text-gray-500">
-              同一科目は1名のみ。講師名を入力すると候補が表示されます。割当すると講師のメーカーに表示されます。
+              同一科目は1名のみ。講師名を入力すると候補が表示されます。割当すると講師のメーカーに表示されます。一覧にない科目は下から追加できます。
             </p>
             <div className="grid grid-cols-2 gap-3">
-              {info.assignments.map((row) => (
-                <div
-                  key={row.subject}
-                  className="flex min-w-0 items-center gap-2 text-sm"
-                >
-                  <span className="w-10 shrink-0">{row.subject}</span>
-                  <TeacherAssignmentInput
-                    teacherId={row.teacherId}
-                    teacherName={row.teacherName}
-                    options={info.teacherOptions}
-                    className={`${fieldClass} min-w-0 flex-1`}
-                    onChange={(teacherId, teacherName) =>
-                      updateAssignment(row.subject, teacherId, teacherName)
-                    }
-                  />
-                </div>
-              ))}
+              {info.assignments.map((row, index) => {
+                const fixed = isFixedSubject(row.subject);
+                return (
+                  <div
+                    key={fixed ? row.subject : `custom-${index}`}
+                    className="flex min-w-0 items-center gap-2 text-sm"
+                  >
+                    {fixed ? (
+                      <span className="w-10 shrink-0">{row.subject}</span>
+                    ) : (
+                      <input
+                        className="w-16 shrink-0 rounded border border-gray-300 bg-white px-1.5 py-2 text-sm"
+                        value={row.subject}
+                        aria-label="追加科目名"
+                        onChange={(e) =>
+                          updateCustomSubjectName(index, e.target.value)
+                        }
+                        onBlur={() => commitCustomSubjectName(index)}
+                      />
+                    )}
+                    <TeacherAssignmentInput
+                      teacherId={row.teacherId}
+                      teacherName={row.teacherName}
+                      options={info.teacherOptions}
+                      selfTeacherId={teacherId}
+                      className={`${fieldClass} min-w-0 flex-1`}
+                      onChange={(nextTeacherId, nextTeacherName) =>
+                        updateAssignment(
+                          row.subject,
+                          nextTeacherId,
+                          nextTeacherName,
+                        )
+                      }
+                    />
+                    {!fixed ? (
+                      <button
+                        type="button"
+                        className="shrink-0 text-xs text-gray-500 underline hover:text-red-600"
+                        onClick={() => removeCustomSubject(index)}
+                      >
+                        削除
+                      </button>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <input
+                className="min-w-[8rem] flex-1 rounded border border-gray-300 bg-white px-3 py-2 text-sm"
+                value={newSubjectName}
+                placeholder="追加する科目名"
+                onChange={(e) => setNewSubjectName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addCustomSubject();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                disabled={!newSubjectName.trim()}
+                onClick={addCustomSubject}
+              >
+                科目を追加
+              </button>
             </div>
           </fieldset>
 
@@ -508,28 +757,72 @@ export function TeacherStudentBasicInfo({
                 <>
                   {hasSelfAssignment && (
                     <div>
-                      <button
-                        type="button"
-                        className="rounded border border-red-300 bg-white px-4 py-2 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
-                        onClick={() => void handleUnassign()}
-                        disabled={unassigning}
-                      >
-                        {unassigning ? "解除中…" : "担当を解除"}
-                      </button>
+                      <span className="relative inline-block">
+                        <button
+                          type="button"
+                          className="rounded border border-red-300 bg-white px-4 py-2 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
+                          onClick={() => {
+                            dismissUnassignHint();
+                            void handleUnassign();
+                          }}
+                          disabled={unassigning}
+                        >
+                          {unassigning ? "解除中…" : "担当を解除"}
+                        </button>
+                        {showUnassignHint && (
+                          <div className="absolute bottom-full left-0 z-[60] mb-2 w-72 rounded-lg border border-amber-300 bg-white p-3 text-left text-gray-800 shadow-xl">
+                            <div className="absolute -bottom-1.5 left-6 h-3 w-3 rotate-45 border-b border-r border-amber-300 bg-white" />
+                            <p className="text-xs leading-relaxed">
+                              休会・退会などで担当を外れた場合は、こちらで担当を解除してください。
+                            </p>
+                            <div className="mt-2 text-right">
+                              <button
+                                type="button"
+                                className="rounded bg-[#1e3a5f] px-3 py-1 text-xs font-medium text-white hover:bg-[#2a4f7a]"
+                                onClick={dismissUnassignHint}
+                              >
+                                OK
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </span>
                       <p className="mt-2 text-xs text-gray-500">
                         自分が担当している科目の割当をすべて外します。
                       </p>
                     </div>
                   )}
                   <div>
-                    <button
-                      type="button"
-                      className="rounded border border-gray-400 bg-white px-4 py-2 text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-50"
-                      onClick={() => void handleGraduate()}
-                      disabled={graduating}
-                    >
-                      {graduating ? "登録中…" : "卒塾"}
-                    </button>
+                    <span className="relative inline-block">
+                      <button
+                        type="button"
+                        className="rounded border border-gray-400 bg-white px-4 py-2 text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                        onClick={() => {
+                          dismissGraduateHint();
+                          void handleGraduate();
+                        }}
+                        disabled={graduating}
+                      >
+                        {graduating ? "登録中…" : "卒塾"}
+                      </button>
+                      {showGraduateHint && (
+                        <div className="absolute bottom-full left-0 z-[60] mb-2 w-72 rounded-lg border border-amber-300 bg-white p-3 text-left text-gray-800 shadow-xl">
+                          <div className="absolute -bottom-1.5 left-6 h-3 w-3 rotate-45 border-b border-r border-amber-300 bg-white" />
+                          <p className="text-xs leading-relaxed">
+                            卒塾生はここで「卒塾」をクリックしてください。
+                          </p>
+                          <div className="mt-2 text-right">
+                            <button
+                              type="button"
+                              className="rounded bg-[#1e3a5f] px-3 py-1 text-xs font-medium text-white hover:bg-[#2a4f7a]"
+                              onClick={dismissGraduateHint}
+                            >
+                              OK
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </span>
                     <p className="mt-2 text-xs text-gray-500">
                       塾を卒業した生徒としてアーカイブします。担当解除とは別の操作です。
                     </p>

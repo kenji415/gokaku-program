@@ -1,18 +1,10 @@
 import {
   COURSE_PROPOSAL_SEASON_LABELS,
   type CourseProposalSheetData,
-  type CourseProposalSubject,
 } from "@/lib/course-proposal-types";
 import { formatGradeDisplay } from "@/lib/constants";
 import { formatStudentDisplayName } from "@/lib/months";
 import jukenDoctorLogo from "../../public/juken-doctor-logo.png";
-
-const subjectGridOrder: CourseProposalSubject[] = [
-  "算数",
-  "国語",
-  "理科",
-  "社会",
-];
 
 function MultilineText({ text }: { text: string }) {
   const lines = text.split(/\r?\n/);
@@ -67,7 +59,7 @@ export function CourseProposalSheetPrintView({
           </div>
 
           <div className="course-proposal-grid">
-            {subjectGridOrder.map((subject) => {
+            {sheet.subjectSlots.map((subject) => {
               const data = sheet.subjects[subject];
               return (
                 <div

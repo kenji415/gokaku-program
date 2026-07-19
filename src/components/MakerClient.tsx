@@ -155,6 +155,9 @@ export function MakerClient({
   const [finalStretchTargetSchoolRevision, setFinalStretchTargetSchoolRevision] =
     useState(0);
   const [basicInfoRefreshKey, setBasicInfoRefreshKey] = useState(0);
+  const [newStudentInitialName, setNewStudentInitialName] = useState("");
+  const [showFirstLoginHint, setShowFirstLoginHint] = useState(false);
+  const [showBasicInfoHint, setShowBasicInfoHint] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [pdfMessage, setPdfMessage] = useState("");
   const [pdfError, setPdfError] = useState("");
@@ -166,6 +169,51 @@ export function MakerClient({
   const finalStretchLoadSeqRef = useRef(0);
   const scoreHistoryLoadSeqRef = useRef(0);
   const courseProposalLoadSeqRef = useRef(0);
+  /** URL→state 同期直後は、古い state で history を replace しない */
+  const syncingFromUrlRef = useRef(false);
+
+  const firstLoginHintKey = `maker:studentListHintSeen:${teacherId}`;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      if (!window.localStorage.getItem(firstLoginHintKey)) {
+        setShowFirstLoginHint(true);
+      }
+    } catch {
+      // localStorage 利用不可時は案内を出さない
+    }
+  }, [firstLoginHintKey]);
+
+  const dismissFirstLoginHint = useCallback(() => {
+    setShowFirstLoginHint(false);
+    try {
+      window.localStorage.setItem(firstLoginHintKey, "1");
+    } catch {
+      // 保存できなくても無視
+    }
+  }, [firstLoginHintKey]);
+
+  const basicInfoHintKey = `maker:basicInfoHintSeen:${teacherId}`;
+
+  const maybeShowBasicInfoHint = useCallback(() => {
+    try {
+      if (!window.localStorage.getItem(basicInfoHintKey)) {
+        setShowBasicInfoHint(true);
+      }
+    } catch {
+      // localStorage 利用不可時は案内を出さない
+    }
+  }, [basicInfoHintKey]);
+
+  const dismissBasicInfoHint = useCallback(() => {
+    setShowBasicInfoHint(false);
+    try {
+      window.localStorage.setItem(basicInfoHintKey, "1");
+    } catch {
+      // 保存できなくても無視
+    }
+  }, [basicInfoHintKey]);
 
   const bumpSave = () => setSaveRevision((r) => r + 1);
   const bumpFinalStretchSave = () =>
@@ -204,6 +252,9 @@ export function MakerClient({
       canViewTeacherOverview,
       searchParams,
     );
+    // ブラウザ戻る / openSheet の push など、URL が先に変わったときは
+    // 次の state→URL effect が古い state で replace しないよう印を付ける
+    syncingFromUrlRef.current = true;
     setStudentId((prev) =>
       resolved.studentId !== prev ? resolved.studentId : prev,
     );
@@ -239,6 +290,28 @@ export function MakerClient({
     const nextUrl = query ? `${pathname}?${query}` : pathname;
     const currentQuery = searchParams.toString();
     const currentUrl = currentQuery ? `${pathname}?${currentQuery}` : pathname;
+
+    if (syncingFromUrlRef.current) {
+      syncingFromUrlRef.current = false;
+      const resolved = makerStateFromSearchParams(
+        assignments,
+        canViewTeacherOverview,
+        searchParams,
+      );
+      const stateMatchesUrl =
+        resolved.studentId === studentId &&
+        resolved.subject === subject &&
+        resolved.activeTab === activeTab &&
+        resolved.startYearMonth === startYearMonth &&
+        resolved.courseProposalYear === courseProposalYear &&
+        resolved.courseProposalSeason === courseProposalSeason;
+      // state が URL に追いついているときだけ正規化（name/grade 除去など）
+      if (stateMatchesUrl && nextUrl !== currentUrl) {
+        router.replace(nextUrl, { scroll: false });
+      }
+      return;
+    }
+
     if (nextUrl !== currentUrl) {
       router.replace(nextUrl, { scroll: false });
     }
@@ -249,6 +322,8 @@ export function MakerClient({
     startYearMonth,
     courseProposalYear,
     courseProposalSeason,
+    assignments,
+    canViewTeacherOverview,
     pathname,
     router,
     searchParams,
@@ -388,15 +463,11 @@ export function MakerClient({
           .map((a) => a.subject),
       ),
     ];
-    if (
-      canViewTeacherOverview &&
-      subject &&
-      !unique.includes(subject)
-    ) {
+    if (subject && !unique.includes(subject)) {
       return [...unique, subject];
     }
     return unique;
-  }, [assignments, studentId, isNewStudent, canViewTeacherOverview, subject]);
+  }, [assignments, studentId, isNewStudent, subject]);
 
   const registerStudentOption = useCallback(
     (summary: { id: string; name: string; grade: string }) => {
@@ -411,6 +482,27 @@ export function MakerClient({
     [],
   );
 
+  // 講師別一覧からの担当外遷移: URL の name/grade を選択肢に先入れする
+  useEffect(() => {
+    if (!canViewTeacherOverview) return;
+    const overviewStudentId = searchParams.get("student")?.trim() ?? "";
+    const overviewName = searchParams.get("name")?.trim() ?? "";
+    const overviewGrade = searchParams.get("grade")?.trim() ?? "";
+    if (
+      !overviewStudentId ||
+      overviewStudentId === NEW_STUDENT_ID ||
+      !overviewName ||
+      !overviewGrade
+    ) {
+      return;
+    }
+    registerStudentOption({
+      id: overviewStudentId,
+      name: overviewName,
+      grade: overviewGrade,
+    });
+  }, [canViewTeacherOverview, searchParams, registerStudentOption]);
+
   const handleExistingStudentFound = useCallback(
     (summary: { id: string; name: string; grade: string }) => {
       registerStudentOption(summary);
@@ -424,9 +516,10 @@ export function MakerClient({
     (summary: { id: string; name: string; grade: string }) => {
       registerStudentOption(summary);
       setStudentId(summary.id);
+      maybeShowBasicInfoHint();
       router.refresh();
     },
-    [registerStudentOption, router],
+    [registerStudentOption, router, maybeShowBasicInfoHint],
   );
 
   const handleUnassigned = useCallback(() => {
@@ -655,6 +748,7 @@ export function MakerClient({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         subjects: current.subjects,
+        subjectSlots: current.subjectSlots,
       }),
     });
 
@@ -755,7 +849,7 @@ export function MakerClient({
 
       setSheet(data.sheet);
       registerStudentOption({
-        id: data.sheet.student.id,
+        id: data.sheet.studentId,
         name: data.sheet.student.name,
         grade: data.sheet.student.grade,
       });
@@ -802,12 +896,6 @@ export function MakerClient({
   }, [activeTab, loadCourseProposal]);
 
   useEffect(() => {
-    if (activeTab === "final-stretch" && !showFinalStretchTab) {
-      setActiveTab("program");
-    }
-  }, [activeTab, showFinalStretchTab]);
-
-  useEffect(() => {
     setSheet((prev) => {
       if (!prev?.usesDefaultCampus) return prev;
       return { ...prev, campus: defaultCampus };
@@ -816,11 +904,8 @@ export function MakerClient({
 
   useEffect(() => {
     if (studentId === NEW_STUDENT_ID) return;
-    if (
-      canViewTeacherOverview &&
-      urlStudentParam &&
-      urlStudentParam === studentId
-    ) {
+    // 講師別一覧経由の担当外生徒は assignments に無いため、URL 指定中はリセットしない
+    if (canViewTeacherOverview && urlStudentParam) {
       return;
     }
     if (
@@ -837,6 +922,15 @@ export function MakerClient({
       setSubject(subjectOptions[0]);
     }
   }, [subjectOptions, subject]);
+
+  useEffect(() => {
+    if (activeTab !== "final-stretch" || showFinalStretchTab) return;
+    // 担当外で学年未解決のあいだは program へ落とさず、grade 確定を待つ
+    if (studentId && studentId !== NEW_STUDENT_ID && !selectedStudentGrade) {
+      return;
+    }
+    setActiveTab("program");
+  }, [activeTab, showFinalStretchTab, selectedStudentGrade, studentId]);
 
   const flushActiveTab = useCallback(async (): Promise<boolean> => {
     if (activeTab === "program") return flushSave();
@@ -900,8 +994,9 @@ export function MakerClient({
     });
   };
 
-  const handleListCreateNew = () => {
+  const handleListCreateNew = (initialName?: string) => {
     void switchWithSave(() => {
+      setNewStudentInitialName(initialName?.trim() ?? "");
       setStudentId(NEW_STUDENT_ID);
       setActiveTab("basic");
     });
@@ -1385,11 +1480,7 @@ export function MakerClient({
     initialLoading && !sheet && activeTab === "program" && !isNewStudent;
 
   const programBlocked =
-    activeTab === "program" &&
-    !isNewStudent &&
-    ((loadError && !sheet) ||
-      !sheet ||
-      (!canViewTeacherOverview && !selectedAssignment));
+    activeTab === "program" && !isNewStudent && ((loadError && !sheet) || !sheet);
 
   const makerHeaderProps = {
     title: "プログラムメーカー",
@@ -1400,17 +1491,41 @@ export function MakerClient({
     showTestScheduleLink,
     testScheduleReadOnly,
     navBeforeLogout: (
-      <button
-        type="button"
-        className={
-          activeTab === "list"
-            ? "rounded bg-white/20 px-2 py-0.5 font-medium"
-            : "hover:underline"
-        }
-        onClick={() => void switchTab("list")}
-      >
-        生徒一覧
-      </button>
+      <span className="relative inline-block">
+        <button
+          type="button"
+          className={
+            activeTab === "list"
+              ? "rounded bg-white/20 px-2 py-0.5 font-medium"
+              : "hover:underline"
+          }
+          onClick={() => {
+            dismissFirstLoginHint();
+            void switchTab("list");
+          }}
+        >
+          生徒一覧
+        </button>
+        {showFirstLoginHint && (
+          <div className="absolute right-0 top-full z-[200] mt-2 w-64 rounded-lg border border-amber-300 bg-white p-3 text-left text-gray-800 shadow-xl">
+            <div className="absolute -top-1.5 right-6 h-3 w-3 rotate-45 border-l border-t border-amber-300 bg-white" />
+            <p className="text-xs font-semibold text-gray-900">はじめに</p>
+            <p className="mt-1 text-xs leading-relaxed">
+              ここを押して担当生徒を検索してください。リストになければ「＋
+              新規登録」から追加できます。
+            </p>
+            <div className="mt-2 text-right">
+              <button
+                type="button"
+                className="rounded bg-[#1e3a5f] px-3 py-1 text-xs font-medium text-white hover:bg-[#2a4f7a]"
+                onClick={dismissFirstLoginHint}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        )}
+      </span>
     ),
     navAfterAdmin: canViewTeacherOverview ? (
       <button
@@ -1496,7 +1611,7 @@ export function MakerClient({
             studentName={sheet.student.name}
             gender={sheet.student.gender}
             grade={sheet.student.grade}
-            subject={sheet.subject}
+            subject={subject}
             goal={sheet.goal}
             campus={sheet.campus}
             attendanceCampus={sheet.student.campus}
@@ -1509,6 +1624,11 @@ export function MakerClient({
             recentTestResults={sheet.recentTestResults ?? []}
             months={sheet.months}
             editable
+            subjectOptions={subjectOptions}
+            onSubjectChange={(next) => {
+              if (next === subject) return;
+              void switchWithSave(() => setSubject(next));
+            }}
             onCampusChange={handleCampusChange}
             onGoalChange={handleGoalChange}
             onInitialMockExamsChange={handleInitialMockExamsChange}
@@ -1573,7 +1693,9 @@ export function MakerClient({
             key={studentId}
             studentId={studentId}
             teacherId={teacherId}
+            isAdmin={isAdmin}
             isNew={isNewStudent}
+            initialName={newStudentInitialName}
             refreshKey={basicInfoRefreshKey}
             saveFlushRef={basicSaveFlushRef}
             onSaved={applyBasicInfoToSheet}
@@ -1619,6 +1741,25 @@ export function MakerClient({
                 );
                 bumpCourseProposalSave();
               }}
+              onSlotSubjectChange={(slotIndex, nextSubject) => {
+                setCourseProposalSheet((prev) => {
+                  if (!prev || !prev.availableSubjects.includes(nextSubject)) {
+                    return prev;
+                  }
+                  const currentSubject = prev.subjectSlots[slotIndex];
+                  if (!currentSubject || currentSubject === nextSubject) {
+                    return prev;
+                  }
+                  const subjectSlots = [...prev.subjectSlots];
+                  const duplicateIndex = subjectSlots.indexOf(nextSubject);
+                  subjectSlots[slotIndex] = nextSubject;
+                  if (duplicateIndex >= 0) {
+                    subjectSlots[duplicateIndex] = currentSubject;
+                  }
+                  return { ...prev, subjectSlots };
+                });
+                bumpCourseProposalSave();
+              }}
             />
           ) : (
             <div className="p-8 text-center text-gray-500">読み込み中…</div>
@@ -1628,17 +1769,42 @@ export function MakerClient({
 
       <footer className="screen-only sticky bottom-0 z-[100] border-t bg-white px-4 py-4 shadow-lg">
         <div className="mb-3 flex gap-2 border-b pb-3">
-          <button
-            type="button"
-            className={`rounded px-4 py-2 text-sm ${
-              activeTab === "basic"
-                ? "bg-[#1e3a5f] text-white"
-                : "border bg-white text-gray-700 hover:bg-gray-50"
-            }`}
-            onClick={() => void switchTab("basic")}
-          >
-            生徒基本情報
-          </button>
+          <span className="relative inline-block">
+            <button
+              type="button"
+              className={`rounded px-4 py-2 text-sm ${
+                activeTab === "basic"
+                  ? "bg-[#1e3a5f] text-white"
+                  : "border bg-white text-gray-700 hover:bg-gray-50"
+              }`}
+              onClick={() => {
+                dismissBasicInfoHint();
+                void switchTab("basic");
+              }}
+            >
+              生徒基本情報
+            </button>
+            {showBasicInfoHint && (
+              <div className="absolute bottom-full left-0 z-[200] mb-2 w-64 rounded-lg border border-amber-300 bg-white p-3 text-left text-gray-800 shadow-xl">
+                <div className="absolute -bottom-1.5 left-6 h-3 w-3 rotate-45 border-b border-r border-amber-300 bg-white" />
+                <p className="text-xs font-semibold text-gray-900">
+                  登録が完了しました
+                </p>
+                <p className="mt-1 text-xs leading-relaxed">
+                  基本情報はこちらでいつでも変更できます。
+                </p>
+                <div className="mt-2 text-right">
+                  <button
+                    type="button"
+                    className="rounded bg-[#1e3a5f] px-3 py-1 text-xs font-medium text-white hover:bg-[#2a4f7a]"
+                    onClick={dismissBasicInfoHint}
+                  >
+                    OK
+                  </button>
+                </div>
+              </div>
+            )}
+          </span>
           <button
             type="button"
             className={`rounded px-4 py-2 text-sm ${
@@ -1694,14 +1860,15 @@ export function MakerClient({
           <label className="text-sm">
             生徒
             <span className="ml-2 inline-flex items-center gap-2">
-              <label className="flex items-center gap-1 text-xs text-gray-700">
+              <span className="flex items-center gap-1 text-xs text-gray-700">
                 <input
                   type="checkbox"
+                  aria-label="卒塾生含む"
                   checked={includeGraduated}
                   onChange={(e) => setIncludeGraduated(e.target.checked)}
                 />
-                卒塾生含む
-              </label>
+                <span className="select-none">卒塾生含む</span>
+              </span>
               <button
                 type="button"
                 aria-label="前の生徒"
@@ -1865,8 +2032,6 @@ export function MakerClient({
               <div>通塾・志望校・開始時成績・目標は全科目で共有されます</div>
             ) : activeTab === "score-history" ? (
               <div>チェックした模試の偏差値を左のグラフに表示します（古い順→新しい順）</div>
-            ) : activeTab === "course-proposal" ? (
-              <div>年度・講習期を選び、各科目の内容・提案コマ数を入力します（担当科目のみ編集可。管理者・校長は全科目）</div>
             ) : null}
           </div>
 

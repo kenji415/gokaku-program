@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { ProgramMonthData, ProgramMonthTestPoolItem, StudentTestResultInput } from "@/lib/programs";
 import {
   EMPTY_TEST_RESULT,
@@ -42,6 +43,9 @@ type ProgramSheetProps = {
   recentTestResults: RecentTestResult[];
   months: ProgramMonthData[];
   editable?: boolean;
+  /** 同一生徒に対する担当科目一覧。2件以上かつ editable のとき見出しで切替可 */
+  subjectOptions?: string[];
+  onSubjectChange?: (subject: string) => void;
   onCampusChange?: (value: string) => void;
   onGoalChange?: (value: string) => void;
   onInitialMockExamsChange?: (value: string) => void;
@@ -294,6 +298,10 @@ function MonthBoxSlot({
   tests,
   defaultGrade,
   defaultCramSchool,
+  showTestEditHint,
+  onDismissTestEditHint,
+  showTestResultHint,
+  onDismissTestResultHint,
 }: {
   month: ProgramMonthData;
   index: number;
@@ -306,6 +314,10 @@ function MonthBoxSlot({
   tests: ProgramMonthTestPoolItem[];
   defaultGrade: string;
   defaultCramSchool: string;
+  showTestEditHint?: boolean;
+  onDismissTestEditHint?: () => void;
+  showTestResultHint?: boolean;
+  onDismissTestResultHint?: () => void;
 }) {
   if (!monthBoxOnRow(index, row)) return null;
 
@@ -333,6 +345,10 @@ function MonthBoxSlot({
         tests={tests}
         defaultGrade={defaultGrade}
         defaultCramSchool={defaultCramSchool}
+        showTestEditHint={showTestEditHint}
+        onDismissTestEditHint={onDismissTestEditHint}
+        showTestResultHint={showTestResultHint}
+        onDismissTestResultHint={onDismissTestResultHint}
       />
       {row === "top" && (
         <div className="month-box-connector month-box-connector--down" />
@@ -433,6 +449,10 @@ function MonthBox({
   tests,
   defaultGrade,
   defaultCramSchool,
+  showTestEditHint,
+  onDismissTestEditHint,
+  showTestResultHint,
+  onDismissTestResultHint,
 }: {
   month: ProgramMonthData;
   row: "top" | "bottom";
@@ -444,6 +464,10 @@ function MonthBox({
   tests: ProgramMonthTestPoolItem[];
   defaultGrade: string;
   defaultCramSchool: string;
+  showTestEditHint?: boolean;
+  onDismissTestEditHint?: () => void;
+  showTestResultHint?: boolean;
+  onDismissTestResultHint?: () => void;
 }) {
   const [testsEditOpen, setTestsEditOpen] = useState(false);
   const [resultTestId, setResultTestId] = useState<string | null>(null);
@@ -458,6 +482,62 @@ function MonthBox({
   const [newTestCramSchool, setNewTestCramSchool] = useState(defaultCramSchool);
   const [savingTest, setSavingTest] = useState(false);
   const testEditRef = useRef<HTMLDivElement>(null);
+  const testEditBtnRef = useRef<HTMLButtonElement>(null);
+  const testResultBtnRef = useRef<HTMLButtonElement>(null);
+  const [hintPos, setHintPos] = useState<{ top: number; left: number } | null>(
+    null,
+  );
+  const [resultHintPos, setResultHintPos] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!showTestEditHint) {
+      setHintPos(null);
+      return;
+    }
+    const update = () => {
+      const el = testEditBtnRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      setHintPos({
+        top: rect.bottom + 6,
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - 268)),
+      });
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [showTestEditHint]);
+
+  useEffect(() => {
+    if (!showTestResultHint) {
+      setResultHintPos(null);
+      return;
+    }
+    const update = () => {
+      const el = testResultBtnRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      setResultHintPos({
+        top: rect.bottom + 6,
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - 268)),
+      });
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [showTestResultHint]);
+
   const selectedIds = month.tests.map((t) => t.id);
   const otherTests = tests.filter((t) => !selectedIds.includes(t.id));
   const displayTests =
@@ -646,28 +726,54 @@ function MonthBox({
         >
           <div className="month-box-tests text-center text-[9px] font-medium text-red-600">
             {visibleTests.length > 0
-              ? visibleTests.map((t) => {
-                  const scores = t.result ? formatTestResultScores(t.result) : "";
+              ? visibleTests.map((t, testIdx) => {
                   const hasEnteredScores = Boolean(
                     t.result && hasScoreResult(t.result),
                   );
                   return (
                     <button
                       key={t.id}
+                      ref={testIdx === 0 ? testResultBtnRef : undefined}
                       type="button"
                       className={`month-box-test-line block w-full text-left text-[9px] leading-tight underline decoration-dotted underline-offset-2 ${hasEnteredScores ? "text-blue-700" : "text-red-600"}`}
-                      onClick={() => openResultPanel(t.id)}
+                      onClick={() => {
+                        onDismissTestResultHint?.();
+                        openResultPanel(t.id);
+                      }}
                     >
                       <span>{t.displayText}</span>
-                      {scores ? (
-                        <span className="ml-1 text-[8px] text-gray-700 no-underline">
-                          {scores}
-                        </span>
-                      ) : null}
                     </button>
                   );
                 })
               : "\u00a0"}
+            {showTestResultHint &&
+              resultHintPos &&
+              typeof document !== "undefined" &&
+              createPortal(
+                <div
+                  style={{
+                    position: "fixed",
+                    top: resultHintPos.top,
+                    left: resultHintPos.left,
+                    zIndex: 1000,
+                  }}
+                  className="w-64 rounded-lg border border-amber-300 bg-white p-3 text-left text-gray-800 shadow-xl"
+                >
+                  <p className="text-xs leading-relaxed">
+                    テスト結果は、テスト名をクリックして入力できます。
+                  </p>
+                  <div className="mt-2 text-right">
+                    <button
+                      type="button"
+                      className="rounded bg-[#1e3a5f] px-3 py-1 text-xs font-medium text-white hover:bg-[#2a4f7a]"
+                      onClick={() => onDismissTestResultHint?.()}
+                    >
+                      OK
+                    </button>
+                  </div>
+                </div>,
+                document.body,
+              )}
           </div>
 
           {editable && (
@@ -676,14 +782,48 @@ function MonthBox({
               className={`month-box-test-edit${testsEditOpen ? " is-open" : ""}`}
             >
               <button
+                ref={testEditBtnRef}
                 type="button"
-                onClick={() =>
-                  testsEditOpen ? closeTestsEdit() : setTestsEditOpen(true)
-                }
+                onClick={() => {
+                  onDismissTestEditHint?.();
+                  if (testsEditOpen) {
+                    closeTestsEdit();
+                  } else {
+                    setTestsEditOpen(true);
+                  }
+                }}
                 className="month-box-test-edit-btn text-[10px] text-gray-500 underline"
               >
                 {testsEditOpen ? "閉じる" : "テスト編集"}
               </button>
+              {showTestEditHint &&
+                hintPos &&
+                typeof document !== "undefined" &&
+                createPortal(
+                  <div
+                    style={{
+                      position: "fixed",
+                      top: hintPos.top,
+                      left: hintPos.left,
+                      zIndex: 1000,
+                    }}
+                    className="w-64 rounded-lg border border-amber-300 bg-white p-3 text-left text-gray-800 shadow-xl"
+                  >
+                    <p className="text-xs leading-relaxed">
+                      テストを追加する場合は、こちらの「テスト編集」から行えます。
+                    </p>
+                    <div className="mt-2 text-right">
+                      <button
+                        type="button"
+                        className="rounded bg-[#1e3a5f] px-3 py-1 text-xs font-medium text-white hover:bg-[#2a4f7a]"
+                        onClick={() => onDismissTestEditHint?.()}
+                      >
+                        OK
+                      </button>
+                    </div>
+                  </div>,
+                  document.body,
+                )}
               {testsEditOpen && (
                 <div
                   className="month-box-test-panel"
@@ -893,6 +1033,8 @@ export function ProgramSheet({
   recentTestResults,
   months,
   editable,
+  subjectOptions = [],
+  onSubjectChange,
   onCampusChange,
   onGoalChange,
   onInitialMockExamsChange,
@@ -907,6 +1049,56 @@ export function ProgramSheet({
   const monthTestPool = (yearMonth: string) =>
     allTestsForMonth[yearMonth] ?? availableTests[yearMonth] ?? [];
   const showHeaderMeta = editable || Boolean(teacherName) || Boolean(campus);
+  const showSubjectSelect =
+    Boolean(editable) && subjectOptions.length > 1 && Boolean(onSubjectChange);
+
+  const [showTestEditHint, setShowTestEditHint] = useState(false);
+  const testEditHintKey = "maker:testEditHintSeen";
+
+  useEffect(() => {
+    if (!editable) return;
+    try {
+      if (!window.localStorage.getItem(testEditHintKey)) {
+        setShowTestEditHint(true);
+      }
+    } catch {
+      // localStorage 利用不可時は案内を出さない
+    }
+  }, [editable]);
+
+  const dismissTestEditHint = () => {
+    setShowTestEditHint(false);
+    try {
+      window.localStorage.setItem(testEditHintKey, "1");
+    } catch {
+      // 保存できなくても無視
+    }
+  };
+
+  const firstTestMonthIndex = months.findIndex((m) => m.tests.length > 0);
+
+  const [showTestResultHint, setShowTestResultHint] = useState(false);
+  const testResultHintKey = "maker:testResultHintSeen";
+
+  useEffect(() => {
+    if (!editable || firstTestMonthIndex < 0) return;
+    try {
+      if (!window.localStorage.getItem(testResultHintKey)) {
+        setShowTestResultHint(true);
+      }
+    } catch {
+      // localStorage 利用不可時は案内を出さない
+    }
+  }, [editable, firstTestMonthIndex]);
+
+  const dismissTestResultHint = () => {
+    setShowTestResultHint(false);
+    try {
+      window.localStorage.setItem(testResultHintKey, "1");
+    } catch {
+      // 保存できなくても無視
+    }
+  };
 
   return (
     <div className="program-sheet mx-auto box-border border border-neutral-300 text-gray-900">
@@ -917,7 +1109,26 @@ export function ProgramSheet({
       <div className="program-sheet-header flex shrink-0 flex-col justify-center gap-0.5">
         <div className="program-sheet-header-main flex min-w-0 items-center justify-between gap-2">
           <h1 className="program-sheet-header-title min-w-0 leading-snug">
-            {formatStudentDisplayName(studentName, gender)}　{subject}{" "}
+            {formatStudentDisplayName(studentName, gender)}　
+            {showSubjectSelect ? (
+              <>
+                <select
+                  className="program-sheet-header-subject-select screen-only"
+                  value={subject}
+                  onChange={(e) => onSubjectChange?.(e.target.value)}
+                  aria-label="科目"
+                >
+                  {subjectOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+                <span className="print-only">{subject}</span>
+              </>
+            ) : (
+              subject
+            )}{" "}
             合格プログラムシート({grade})
           </h1>
           {showHeaderMeta && (
@@ -1034,6 +1245,12 @@ export function ProgramSheet({
                   tests={monthTestPool(month.yearMonth)}
                   defaultGrade={grade}
                   defaultCramSchool={cramSchool}
+                  showTestEditHint={showTestEditHint && i === 0}
+                  onDismissTestEditHint={dismissTestEditHint}
+                  showTestResultHint={
+                    showTestResultHint && i === firstTestMonthIndex
+                  }
+                  onDismissTestResultHint={dismissTestResultHint}
                 />
               ))}
             </div>
@@ -1098,6 +1315,10 @@ export function ProgramSheet({
                   tests={monthTestPool(month.yearMonth)}
                   defaultGrade={grade}
                   defaultCramSchool={cramSchool}
+                  showTestResultHint={
+                    showTestResultHint && i === firstTestMonthIndex
+                  }
+                  onDismissTestResultHint={dismissTestResultHint}
                 />
               ))}
             </div>

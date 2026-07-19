@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { MakerStudentListItem } from "@/lib/programs";
 import { formatGraduationYear } from "@/lib/graduation";
+import { SUBJECTS } from "@/lib/constants";
 
 type SelectOptions = {
   tab: "basic" | "program";
@@ -16,7 +17,7 @@ type Props = {
     student: MakerStudentListItem,
     options: SelectOptions,
   ) => void;
-  onCreateNew: () => void;
+  onCreateNew: (initialName?: string) => void;
 };
 
 export function TeacherStudentList({
@@ -30,6 +31,51 @@ export function TeacherStudentList({
   const [loadError, setLoadError] = useState("");
   const [query, setQuery] = useState("");
   const [includeGraduated, setIncludeGraduated] = useState(false);
+  const [assignSubject, setAssignSubject] = useState<Record<string, string>>({});
+  const [assigningId, setAssigningId] = useState<string | null>(null);
+
+  const handleAssignSelf = async (
+    student: MakerStudentListItem,
+    subject: string,
+  ) => {
+    if (!subject) return;
+    setAssigningId(student.id);
+    try {
+      let res = await fetch(
+        `/api/programs/students/${student.id}/assign-self`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ subject }),
+        },
+      );
+
+      if (res.status === 409) {
+        const data = (await res.json()) as { teacherName?: string };
+        const teacherName = data.teacherName ?? "他の講師";
+        if (
+          !window.confirm(
+            `${subject}は${teacherName}先生が担当中です。あなたに引き継ぎますか？`,
+          )
+        ) {
+          return;
+        }
+        res = await fetch(
+          `/api/programs/students/${student.id}/assign-self`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ subject, force: true }),
+          },
+        );
+      }
+
+      if (!res.ok) return;
+      onSelectStudent(student, { tab: "program", subject });
+    } finally {
+      setAssigningId(null);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -104,7 +150,7 @@ export function TeacherStudentList({
           <div>
             <h2 className="text-lg font-semibold text-gray-900">生徒一覧</h2>
             <p className="mt-1 text-xs text-gray-500">
-              氏名をクリックで基本情報、担当科目をクリックでプログラムシートを開きます。検索で担当外の生徒も氏名一致なら表示されます（姓名の間のスペースは不要）。
+              氏名をクリックで基本情報、担当科目をクリックでプログラムシートを開きます。検索で担当外の生徒も氏名一致なら表示されます（姓名の間のスペースは不要）。担当外の生徒は科目を選んで「担当に加わる」で自分の担当に追加できます。
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -127,7 +173,7 @@ export function TeacherStudentList({
             <button
               type="button"
               className="rounded border border-[#1e3a5f] bg-white px-3 py-1.5 text-sm text-[#1e3a5f] hover:bg-gray-50"
-              onClick={onCreateNew}
+              onClick={() => onCreateNew(query.trim())}
             >
               ＋ 新規登録
             </button>
@@ -221,8 +267,43 @@ export function TeacherStudentList({
                               </button>
                             ))}
                           </div>
-                        ) : (
+                        ) : student.graduatedAt ? (
                           <span className="text-xs text-gray-400">未割当</span>
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            <select
+                              className="rounded border border-gray-300 px-1.5 py-0.5 text-xs"
+                              value={assignSubject[student.id] ?? SUBJECTS[0]}
+                              onChange={(e) =>
+                                setAssignSubject((prev) => ({
+                                  ...prev,
+                                  [student.id]: e.target.value,
+                                }))
+                              }
+                              aria-label="担当する科目"
+                            >
+                              {SUBJECTS.map((subj) => (
+                                <option key={subj} value={subj}>
+                                  {subj}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              className="rounded border border-[#1e3a5f] bg-white px-2 py-0.5 text-xs text-[#1e3a5f] hover:bg-gray-50 disabled:opacity-50"
+                              onClick={() =>
+                                void handleAssignSelf(
+                                  student,
+                                  assignSubject[student.id] ?? SUBJECTS[0],
+                                )
+                              }
+                              disabled={assigningId === student.id}
+                            >
+                              {assigningId === student.id
+                                ? "登録中…"
+                                : "担当に加わる"}
+                            </button>
+                          </div>
                         )}
                       </td>
                     </tr>

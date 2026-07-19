@@ -90,7 +90,7 @@ function buildAssignments(studentId: string): StudentSubjectAssignment[] {
   const existing = getStudentAssignments(studentId);
   const bySubject = new Map(existing.map((a) => [a.subject, a]));
 
-  return SUBJECTS.map((subject) => {
+  const base = SUBJECTS.map((subject) => {
     const row = bySubject.get(subject);
     return {
       subject,
@@ -98,6 +98,17 @@ function buildAssignments(studentId: string): StudentSubjectAssignment[] {
       teacherName: row?.teacherName ?? "",
     };
   });
+
+  const extras = existing
+    .filter((row) => !(SUBJECTS as readonly string[]).includes(row.subject))
+    .map((row) => ({
+      subject: row.subject,
+      teacherId: row.teacherId,
+      teacherName: row.teacherName,
+    }))
+    .sort((a, b) => a.subject.localeCompare(b.subject, "ja"));
+
+  return [...base, ...extras];
 }
 
 export function getStudentBasicInfo(
@@ -229,6 +240,72 @@ export function patchStudentBasicInfo(
   if (input.assignments !== undefined) {
     syncStudentAssignments(studentId, input.assignments);
   }
+}
+
+export function assignSelfToStudentSubject(
+  studentId: string,
+  teacherId: string,
+  subject: string,
+  force = false,
+):
+  | { status: "ok" }
+  | { status: "taken"; teacherName: string }
+  | { status: "not-found" } {
+  const db = getDb();
+  const student = db
+    .select({ id: schema.students.id })
+    .from(schema.students)
+    .where(eq(schema.students.id, studentId))
+    .get();
+  if (!student) return { status: "not-found" };
+
+  const existing = db
+    .select({
+      id: schema.studentAssignments.id,
+      teacherId: schema.studentAssignments.teacherId,
+    })
+    .from(schema.studentAssignments)
+    .where(
+      and(
+        eq(schema.studentAssignments.studentId, studentId),
+        eq(schema.studentAssignments.subject, subject),
+      ),
+    )
+    .get();
+
+  const now = new Date().toISOString();
+
+  if (existing) {
+    if (existing.teacherId === teacherId) return { status: "ok" };
+    if (!force) {
+      const other = db
+        .select({ name: schema.users.name })
+        .from(schema.users)
+        .where(eq(schema.users.id, existing.teacherId))
+        .get();
+      return { status: "taken", teacherName: other?.name ?? "他の講師" };
+    }
+    db.update(schema.studentAssignments)
+      .set({ teacherId })
+      .where(eq(schema.studentAssignments.id, existing.id))
+      .run();
+  } else {
+    db.insert(schema.studentAssignments)
+      .values({ id: uuid(), studentId, teacherId, subject })
+      .run();
+  }
+
+  db.update(schema.programSheets)
+    .set({ teacherId, updatedAt: now })
+    .where(
+      and(
+        eq(schema.programSheets.studentId, studentId),
+        eq(schema.programSheets.subject, subject),
+      ),
+    )
+    .run();
+
+  return { status: "ok" };
 }
 
 export function unassignTeacherFromStudent(

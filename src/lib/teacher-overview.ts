@@ -177,14 +177,40 @@ function listActiveAssignmentRows(): AssignmentOverviewRow[] {
 
 function parseCourseProposalSubjectsJson(
   raw: string | null | undefined,
-): Partial<Record<CourseProposalSubject, Partial<CourseProposalSubjectData>>> {
-  if (!raw?.trim()) return {};
+): {
+  slots: CourseProposalSubject[];
+  subjects: Partial<Record<string, Partial<CourseProposalSubjectData>>>;
+} {
+  const fallback = {
+    slots: [...COURSE_PROPOSAL_SUBJECTS] as CourseProposalSubject[],
+    subjects: {},
+  };
+  if (!raw?.trim()) return fallback;
   try {
-    return JSON.parse(raw) as Partial<
-      Record<CourseProposalSubject, Partial<CourseProposalSubjectData>>
-    >;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return fallback;
+    }
+    const record = parsed as Record<string, unknown>;
+    const subjects =
+      record.subjects &&
+      typeof record.subjects === "object" &&
+      !Array.isArray(record.subjects)
+        ? (record.subjects as Partial<
+            Record<string, Partial<CourseProposalSubjectData>>
+          >)
+        : (record as Partial<
+            Record<string, Partial<CourseProposalSubjectData>>
+          >);
+    const slots = Array.isArray(record.slots)
+      ? record.slots.filter(
+          (subject): subject is string =>
+            typeof subject === "string" && Boolean(subject.trim()),
+        )
+      : [...COURSE_PROPOSAL_SUBJECTS];
+    return { slots, subjects };
   } catch {
-    return {};
+    return fallback;
   }
 }
 
@@ -303,19 +329,14 @@ export function userCanViewProgramSheet(
   const sheet = getProgramSheet(sheetId);
   if (!sheet) return false;
 
-  if (memberRole === "管理者") {
-    const campusScope = resolveCampusScope(userId, memberRole);
-    if (!campusScope) return true;
-    return userCanAccessCampusScopedSheet(sheet, userId, campusScope);
-  }
+  // 管理者は講師別一覧と同様に全校舎・担当外を閲覧可（assignedCampus で弾かない）
+  if (memberRole === "管理者" || accessRole === "admin") return true;
 
   if (memberRole === "校長") {
     const campusScope = resolveCampusScope(userId, memberRole);
     if (!campusScope) return false;
     return userCanAccessCampusScopedSheet(sheet, userId, campusScope);
   }
-
-  if (accessRole === "admin") return true;
 
   if (sheet.teacherId === userId) return true;
 
@@ -520,10 +541,7 @@ export function getCourseProposalTeacherOverview(
   if (campusScope === undefined) return [];
 
   const campusFilter = campusScope;
-  const proposalSubjects = new Set<string>(COURSE_PROPOSAL_SUBJECTS);
-  const assignmentRows = listActiveAssignmentRows().filter((row) =>
-    proposalSubjects.has(row.subject),
-  );
+  const assignmentRows = listActiveAssignmentRows();
   const campusCache = buildStudentTeacherCampusCache(assignmentRows);
 
   type SubjectAssignee = { teacherId: string; teacherName: string };
@@ -604,9 +622,23 @@ export function getCourseProposalTeacherOverview(
       )
       .get();
 
-    const subjects = parseCourseProposalSubjectsJson(
+    const proposalData = parseCourseProposalSubjectsJson(
       proposalSheet?.subjectsJson,
     );
+    const availableSubjects = new Set<string>([
+      ...COURSE_PROPOSAL_SUBJECTS,
+      ...assignees.keys(),
+    ]);
+    const subjectSlots = proposalData.slots
+      .filter(
+        (subject, index, slots) =>
+          availableSubjects.has(subject) && slots.indexOf(subject) === index,
+      )
+      .slice(0, COURSE_PROPOSAL_SUBJECTS.length);
+    for (const subject of COURSE_PROPOSAL_SUBJECTS) {
+      if (subjectSlots.length >= COURSE_PROPOSAL_SUBJECTS.length) break;
+      if (!subjectSlots.includes(subject)) subjectSlots.push(subject);
+    }
 
     students.push({
       studentId,
@@ -616,14 +648,18 @@ export function getCourseProposalTeacherOverview(
       teacherId: firstAssignee?.teacherId ?? "",
       sheetId: proposalSheet?.id ?? null,
       sheetCampus,
-      months: COURSE_PROPOSAL_SUBJECTS.map((subject) => {
+      months: subjectSlots.map((subject) => {
         const assignee = assignees.get(subject);
         return {
           yearMonth: subject,
           monthLabel: subject,
-          filled: courseProposalSubjectHasContent(subjects[subject]),
-          advice: trimOrEmpty(subjects[subject]?.advice),
-          sessionCount: trimOrEmpty(subjects[subject]?.sessionCount),
+          filled: courseProposalSubjectHasContent(
+            proposalData.subjects[subject],
+          ),
+          advice: trimOrEmpty(proposalData.subjects[subject]?.advice),
+          sessionCount: trimOrEmpty(
+            proposalData.subjects[subject]?.sessionCount,
+          ),
           hasAssignee: Boolean(assignee),
           assigneeName: assignee?.teacherName ?? "",
         };

@@ -5,6 +5,7 @@ import { getDb } from "./db";
 import * as schema from "./db/schema";
 import {
   COURSE_PROPOSAL_SUBJECTS,
+  createEmptySubjectData,
   createEmptyCourseProposalSubjects,
   isCourseProposalSeason,
   type CourseProposalSeason,
@@ -32,47 +33,103 @@ export {
   type CourseProposalSubjects,
 } from "./course-proposal-types";
 
-function parseSubjectsJson(raw: string | null | undefined): CourseProposalSubjects {
-  const empty = createEmptyCourseProposalSubjects();
-  if (!raw?.trim()) return empty;
+type StoredCourseProposal = {
+  slots: CourseProposalSubject[];
+  subjects: CourseProposalSubjects;
+};
+
+function getAvailableSubjects(studentId: string): CourseProposalSubject[] {
+  const subjects = [...COURSE_PROPOSAL_SUBJECTS] as CourseProposalSubject[];
+  for (const assignment of getStudentAssignments(studentId)) {
+    const subject = assignment.subject.trim();
+    if (subject && !subjects.includes(subject)) subjects.push(subject);
+  }
+  return subjects;
+}
+
+export function parseCourseProposalSubjectsJson(
+  raw: string | null | undefined,
+): { slots: CourseProposalSubject[]; subjects: CourseProposalSubjects } {
+  const fallback = {
+    slots: [...COURSE_PROPOSAL_SUBJECTS],
+    subjects: createEmptyCourseProposalSubjects(),
+  };
+  if (!raw?.trim()) return fallback;
 
   try {
-    const parsed = JSON.parse(raw) as Partial<
-      Record<CourseProposalSubject, Partial<CourseProposalSubjectData>>
-    >;
-    for (const subject of COURSE_PROPOSAL_SUBJECTS) {
-      const row = parsed[subject];
-      if (!row) continue;
-      empty[subject] = {
-        advice: row.advice?.trim() ?? "",
-        sessionCount: row.sessionCount?.trim() ?? "",
-        teacherName: row.teacherName?.trim() ?? "",
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return fallback;
+    }
+    const record = parsed as Record<string, unknown>;
+    const subjectRecord =
+      record.subjects &&
+      typeof record.subjects === "object" &&
+      !Array.isArray(record.subjects)
+        ? (record.subjects as Record<string, unknown>)
+        : record;
+    const subjects = createEmptyCourseProposalSubjects();
+
+    for (const [subject, value] of Object.entries(subjectRecord)) {
+      if (!subject.trim() || !value || typeof value !== "object") continue;
+      const row = value as Partial<CourseProposalSubjectData>;
+      subjects[subject] = {
+        advice: typeof row.advice === "string" ? row.advice : "",
+        sessionCount:
+          typeof row.sessionCount === "string" ? row.sessionCount : "",
+        teacherName:
+          typeof row.teacherName === "string" ? row.teacherName.trim() : "",
       };
     }
+
+    const slots = Array.isArray(record.slots)
+      ? record.slots.filter(
+          (subject): subject is string =>
+            typeof subject === "string" && Boolean(subject.trim()),
+        )
+      : [...COURSE_PROPOSAL_SUBJECTS];
+    return { slots, subjects };
   } catch {
-    return empty;
+    return fallback;
   }
-
-  return empty;
 }
 
-function serializeSubjectsJson(subjects: CourseProposalSubjects): string {
-  return JSON.stringify(subjects);
+function normalizeSubjectSlots(
+  slots: readonly string[],
+  availableSubjects: readonly string[],
+): CourseProposalSubject[] {
+  const available = new Set(availableSubjects);
+  const normalized: string[] = [];
+  for (const subject of [
+    ...slots,
+    ...COURSE_PROPOSAL_SUBJECTS,
+    ...availableSubjects,
+  ]) {
+    if (
+      available.has(subject) &&
+      !normalized.includes(subject) &&
+      normalized.length < COURSE_PROPOSAL_SUBJECTS.length
+    ) {
+      normalized.push(subject);
+    }
+  }
+  return normalized;
 }
 
-function defaultTeacherNamesForStudent(studentId: string): Partial<
-  Record<CourseProposalSubject, string>
-> {
+function serializeSubjectsJson(data: StoredCourseProposal): string {
+  return JSON.stringify(data);
+}
+
+function defaultTeacherNamesForStudent(
+  studentId: string,
+): Partial<Record<string, string>> {
   const assignments = getStudentAssignments(studentId);
   const names: Partial<Record<CourseProposalSubject, string>> = {};
 
   for (const assignment of assignments) {
-    if (!(COURSE_PROPOSAL_SUBJECTS as readonly string[]).includes(assignment.subject)) {
-      continue;
-    }
     const teacherName = assignment.teacherName?.trim() ?? "";
     if (!teacherName) continue;
-    names[assignment.subject as CourseProposalSubject] = teacherName;
+    names[assignment.subject] = teacherName;
   }
 
   return names;
@@ -84,10 +141,14 @@ function applyAssignmentTeacherNames(
 ): CourseProposalSubjects {
   const defaults = defaultTeacherNamesForStudent(studentId);
   const next = { ...subjects };
+  const allSubjects = new Set([
+    ...Object.keys(subjects),
+    ...getAvailableSubjects(studentId),
+  ]);
 
-  for (const subject of COURSE_PROPOSAL_SUBJECTS) {
+  for (const subject of allSubjects) {
     next[subject] = {
-      ...next[subject],
+      ...(next[subject] ?? createEmptySubjectData()),
       teacherName: defaults[subject] ?? "",
     };
   }
@@ -132,9 +193,10 @@ export function getCourseProposalEditableSubjects(
   userId: string,
   memberRole: string | undefined,
   accessRole: "admin" | "teacher",
-): Record<CourseProposalSubject, boolean> {
+): Record<string, boolean> {
+  const subjects = getAvailableSubjects(studentId);
   return Object.fromEntries(
-    COURSE_PROPOSAL_SUBJECTS.map((subject) => [
+    subjects.map((subject) => [
       subject,
       userCanEditCourseProposalSubject(
         studentId,
@@ -144,7 +206,7 @@ export function getCourseProposalEditableSubjects(
         accessRole,
       ),
     ]),
-  ) as Record<CourseProposalSubject, boolean>;
+  );
 }
 
 function getStudentProgramSheetCampuses(
@@ -158,9 +220,8 @@ function getStudentProgramSheetCampuses(
     EXAM_DR_CAMPUS_NAMES.map((name, index) => [name, index]),
   );
 
-  for (const subject of COURSE_PROPOSAL_SUBJECTS) {
-    const assignment = assignments.find((row) => row.subject === subject);
-    if (!assignment) continue;
+  for (const assignment of assignments) {
+    const subject = assignment.subject;
 
     const sheet = db
       .select({ campus: schema.programSheets.campus })
@@ -203,16 +264,30 @@ function mapSheetRow(
   row: typeof schema.courseProposalSheets.$inferSelect,
   student: typeof schema.students.$inferSelect,
 ): CourseProposalSheetData {
+  const availableSubjects = getAvailableSubjects(row.studentId);
+  const stored = parseCourseProposalSubjectsJson(row.subjectsJson);
+  const subjects = applyAssignmentTeacherNames(
+    {
+      ...stored.subjects,
+      ...Object.fromEntries(
+        availableSubjects.map((subject) => [
+          subject,
+          stored.subjects[subject] ?? createEmptySubjectData(),
+        ]),
+      ),
+    },
+    row.studentId,
+  );
+
   return {
     id: row.id,
     studentId: row.studentId,
     teacherId: row.teacherId,
     year: row.year,
     season: row.season as CourseProposalSeason,
-    subjects: applyAssignmentTeacherNames(
-      parseSubjectsJson(row.subjectsJson),
-      row.studentId,
-    ),
+    subjectSlots: normalizeSubjectSlots(stored.slots, availableSubjects),
+    availableSubjects,
+    subjects,
     student: {
       name: student.name,
       gender: student.gender,
@@ -223,8 +298,8 @@ function mapSheetRow(
       student.campus,
     ),
     editableSubjects: Object.fromEntries(
-      COURSE_PROPOSAL_SUBJECTS.map((subject) => [subject, false]),
-    ) as Record<CourseProposalSubject, boolean>,
+      availableSubjects.map((subject) => [subject, false]),
+    ),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -337,7 +412,10 @@ export function findOrCreateCourseProposalSheet(input: {
       teacherId: input.teacherId,
       year: input.year,
       season: input.season,
-      subjectsJson: serializeSubjectsJson(subjects),
+      subjectsJson: serializeSubjectsJson({
+        slots: [...COURSE_PROPOSAL_SUBJECTS],
+        subjects,
+      }),
       createdAt: now,
       updatedAt: now,
     })
@@ -358,6 +436,7 @@ export function findOrCreateCourseProposalSheet(input: {
 export function saveCourseProposalSheet(
   sheetId: string,
   subjects: CourseProposalSubjects,
+  subjectSlots: CourseProposalSubject[],
   editor: {
     userId: string;
     memberRole: string | undefined;
@@ -369,7 +448,7 @@ export function saveCourseProposalSheet(
   if (!existing) return false;
 
   const merged = { ...existing.subjects };
-  for (const subject of COURSE_PROPOSAL_SUBJECTS) {
+  for (const subject of existing.availableSubjects) {
     if (
       userCanEditCourseProposalSubject(
         existing.studentId,
@@ -379,7 +458,18 @@ export function saveCourseProposalSheet(
         editor.accessRole,
       )
     ) {
-      merged[subject] = subjects[subject];
+      const submitted = subjects[subject];
+      if (submitted) {
+        merged[subject] = {
+          advice:
+            typeof submitted.advice === "string" ? submitted.advice : "",
+          sessionCount:
+            typeof submitted.sessionCount === "string"
+              ? submitted.sessionCount
+              : "",
+          teacherName: existing.subjects[subject]?.teacherName ?? "",
+        };
+      }
     }
   }
 
@@ -389,7 +479,13 @@ export function saveCourseProposalSheet(
   const result = db
     .update(schema.courseProposalSheets)
     .set({
-      subjectsJson: serializeSubjectsJson(subjectsToSave),
+      subjectsJson: serializeSubjectsJson({
+        slots: normalizeSubjectSlots(
+          Array.isArray(subjectSlots) ? subjectSlots : existing.subjectSlots,
+          existing.availableSubjects,
+        ),
+        subjects: subjectsToSave,
+      }),
       updatedAt: now,
     })
     .where(eq(schema.courseProposalSheets.id, sheetId))

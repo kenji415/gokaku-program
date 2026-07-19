@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CRAM_SCHOOL_NAMES, GRADES, GENDERS, SUBJECTS } from "@/lib/constants";
+import { CRAM_SCHOOL_NAMES, GRADES, GENDERS, SUBJECTS, isFixedSubject } from "@/lib/constants";
 import { useTestScheduleCramSchoolNames } from "@/hooks/use-test-schedule-cram-schools";
 import { useAutoSave } from "@/hooks/use-auto-save";
 import { TeacherAssignmentInput } from "@/components/TeacherAssignmentInput";
@@ -53,11 +53,17 @@ export function StudentForm({
 
   const [assignments, setAssignments] = useState<AssignmentRow[]>(() => {
     const map = new Map(initialAssignments.map((a) => [a.subject, a.teacherId]));
-    return SUBJECTS.map((subject) => ({
+    const base = SUBJECTS.map((subject) => ({
       subject,
       teacherId: map.get(subject) ?? "",
     }));
+    const extras = initialAssignments
+      .filter((a) => !(SUBJECTS as readonly string[]).includes(a.subject))
+      .map((a) => ({ subject: a.subject, teacherId: a.teacherId }))
+      .sort((a, b) => a.subject.localeCompare(b.subject, "ja"));
+    return [...base, ...extras];
   });
+  const [newSubjectName, setNewSubjectName] = useState("");
 
   const [error, setError] = useState("");
   const [saveRevision, setSaveRevision] = useState(0);
@@ -81,7 +87,12 @@ export function StudentForm({
     const payload = {
       ...currentForm,
       goal: "志望校合格に向けて",
-      assignments: currentAssignments.filter((a) => a.teacherId),
+      assignments: currentAssignments
+        .map((a) => ({
+          subject: a.subject.trim(),
+          teacherId: a.teacherId,
+        }))
+        .filter((a) => a.teacherId && a.subject),
     };
 
     const res = await fetch(
@@ -245,26 +256,120 @@ export function StudentForm({
       <fieldset className="rounded border p-4">
         <legend className="px-2 text-sm font-medium">科目別担当講師</legend>
         <p className="mb-3 text-xs text-gray-500">
-          同一科目は1名のみ。講師名を入力すると候補が表示されます。割当すると講師のメーカーに表示されます。
+          同一科目は1名のみ。講師名を入力すると候補が表示されます。割当すると講師のメーカーに表示されます。一覧にない科目は下から追加できます。
         </p>
         <div className="space-y-2">
-          {assignments.map((row, i) => (
-            <div key={row.subject} className="flex items-center gap-3 text-sm">
-              <span className="w-12">{row.subject}</span>
-              <TeacherAssignmentInput
-                teacherId={row.teacherId}
-                teacherName={teacherDisplayName(row.teacherId, teachers)}
-                options={teachers}
-                className="flex-1 rounded border px-2 py-1"
-                onChange={(teacherId) => {
-                  const next = [...assignments];
-                  next[i] = { ...row, teacherId };
-                  setAssignments(next);
-                  bumpSave();
-                }}
-              />
-            </div>
-          ))}
+          {assignments.map((row, i) => {
+            const fixed = isFixedSubject(row.subject);
+            return (
+              <div
+                key={fixed ? row.subject : `custom-${i}`}
+                className="flex items-center gap-3 text-sm"
+              >
+                {fixed ? (
+                  <span className="w-12">{row.subject}</span>
+                ) : (
+                  <input
+                    className="w-16 rounded border px-1.5 py-1"
+                    value={row.subject}
+                    aria-label="追加科目名"
+                    onChange={(e) => {
+                      const next = [...assignments];
+                      next[i] = { ...row, subject: e.target.value };
+                      setAssignments(next);
+                    }}
+                    onBlur={() => {
+                      const trimmed = row.subject.trim();
+                      if (!trimmed) {
+                        setAssignments((prev) => prev.filter((_, idx) => idx !== i));
+                        bumpSave();
+                        return;
+                      }
+                      if (
+                        assignments.some(
+                          (a, idx) => idx !== i && a.subject === trimmed,
+                        )
+                      ) {
+                        window.alert("同じ科目名が既にあります");
+                        return;
+                      }
+                      const next = [...assignments];
+                      next[i] = { ...row, subject: trimmed };
+                      setAssignments(next);
+                      bumpSave();
+                    }}
+                  />
+                )}
+                <TeacherAssignmentInput
+                  teacherId={row.teacherId}
+                  teacherName={teacherDisplayName(row.teacherId, teachers)}
+                  options={teachers}
+                  className="flex-1 rounded border px-2 py-1"
+                  onChange={(teacherId) => {
+                    const next = [...assignments];
+                    next[i] = { ...row, teacherId };
+                    setAssignments(next);
+                    bumpSave();
+                  }}
+                />
+                {!fixed ? (
+                  <button
+                    type="button"
+                    className="text-xs text-gray-500 underline hover:text-red-600"
+                    onClick={() => {
+                      setAssignments((prev) => prev.filter((_, idx) => idx !== i));
+                      bumpSave();
+                    }}
+                  >
+                    削除
+                  </button>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <input
+            className="min-w-[8rem] flex-1 rounded border px-2 py-1 text-sm"
+            value={newSubjectName}
+            placeholder="追加する科目名"
+            onChange={(e) => setNewSubjectName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+              e.preventDefault();
+              const trimmed = newSubjectName.trim();
+              if (!trimmed) return;
+              if (assignments.some((a) => a.subject === trimmed)) {
+                window.alert("同じ科目名が既にあります");
+                return;
+              }
+              setAssignments((prev) => [
+                ...prev,
+                { subject: trimmed, teacherId: "" },
+              ]);
+              setNewSubjectName("");
+            }}
+          />
+          <button
+            type="button"
+            className="rounded border px-3 py-1 text-sm disabled:opacity-50"
+            disabled={!newSubjectName.trim()}
+            onClick={() => {
+              const trimmed = newSubjectName.trim();
+              if (!trimmed) return;
+              if (assignments.some((a) => a.subject === trimmed)) {
+                window.alert("同じ科目名が既にあります");
+                return;
+              }
+              setAssignments((prev) => [
+                ...prev,
+                { subject: trimmed, teacherId: "" },
+              ]);
+              setNewSubjectName("");
+            }}
+          >
+            科目を追加
+          </button>
         </div>
       </fieldset>
 

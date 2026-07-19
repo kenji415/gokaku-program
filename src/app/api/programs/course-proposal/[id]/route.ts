@@ -5,6 +5,7 @@ import {
   saveCourseProposalSheet,
   userCanAccessCourseProposalSheet,
   type CourseProposalSubjects,
+  type CourseProposalSubject,
 } from "@/lib/course-proposal";
 
 export async function PUT(
@@ -41,17 +42,27 @@ export async function PUT(
 
   const body = (await request.json()) as {
     subjects: CourseProposalSubjects;
+    subjectSlots: CourseProposalSubject[];
   };
 
-  if (!body.subjects) {
+  if (
+    !body.subjects ||
+    typeof body.subjects !== "object" ||
+    !Array.isArray(body.subjectSlots)
+  ) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  const saved = saveCourseProposalSheet(id, body.subjects, {
-    userId: session.id,
-    memberRole: session.memberRole,
-    accessRole: session.role,
-  });
+  const saved = saveCourseProposalSheet(
+    id,
+    body.subjects,
+    body.subjectSlots,
+    {
+      userId: session.id,
+      memberRole: session.memberRole,
+      accessRole: session.role,
+    },
+  );
   if (!saved) {
     return NextResponse.json({ error: "Save failed" }, { status: 500 });
   }

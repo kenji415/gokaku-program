@@ -16,24 +16,24 @@ type Props = {
     subject: CourseProposalSubject,
     data: CourseProposalSubjectData,
   ) => void;
+  onSlotSubjectChange: (slotIndex: number, subject: CourseProposalSubject) => void;
 };
-
-const subjectGridOrder: CourseProposalSubject[] = [
-  "算数",
-  "国語",
-  "理科",
-  "社会",
-];
 
 function SubjectBox({
   subject,
   data,
   editable,
+  availableSubjects,
+  showSubjectSelect,
+  onSubjectSelect,
   onChange,
 }: {
   subject: CourseProposalSubject;
   data: CourseProposalSubjectData;
   editable: boolean;
+  availableSubjects: CourseProposalSubject[];
+  showSubjectSelect: boolean;
+  onSubjectSelect: (subject: CourseProposalSubject) => void;
   onChange: (data: CourseProposalSubjectData) => void;
 }) {
   return (
@@ -42,7 +42,24 @@ function SubjectBox({
         editable ? "" : " course-proposal-subject-box--readonly"
       }`}
     >
-      <div className="course-proposal-subject-head">{subject}</div>
+      <div className="course-proposal-subject-head">
+        {showSubjectSelect ? (
+          <select
+            className="course-proposal-subject-head-select"
+            value={subject}
+            aria-label="表示科目"
+            onChange={(event) => onSubjectSelect(event.target.value)}
+          >
+            {availableSubjects.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        ) : (
+          subject
+        )}
+      </div>
       <div className="course-proposal-subject-body">
         <textarea
           className="course-proposal-subject-advice"
@@ -78,7 +95,11 @@ function SubjectBox({
   );
 }
 
-export function CourseProposalSheet({ sheet, onSubjectChange }: Props) {
+export function CourseProposalSheet({
+  sheet,
+  onSubjectChange,
+  onSlotSubjectChange,
+}: Props) {
   const seasonLabel = COURSE_PROPOSAL_SEASON_LABELS[sheet.season];
   const campusLabel =
     sheet.teacherCampuses.length > 0
@@ -111,12 +132,17 @@ export function CourseProposalSheet({ sheet, onSubjectChange }: Props) {
         </div>
 
         <div className="course-proposal-grid">
-          {subjectGridOrder.map((subject) => (
+          {sheet.subjectSlots.map((subject, slotIndex) => (
             <SubjectBox
-              key={subject}
+              key={slotIndex}
               subject={subject}
               data={sheet.subjects[subject]}
-              editable={sheet.editableSubjects[subject]}
+              editable={Boolean(sheet.editableSubjects[subject])}
+              availableSubjects={sheet.availableSubjects}
+              showSubjectSelect={sheet.availableSubjects.length > 4}
+              onSubjectSelect={(nextSubject) =>
+                onSlotSubjectChange(slotIndex, nextSubject)
+              }
               onChange={(data) => {
                 if (!sheet.editableSubjects[subject]) return;
                 onSubjectChange(subject, data);

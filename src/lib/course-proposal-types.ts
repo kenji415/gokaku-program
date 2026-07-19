@@ -5,7 +5,7 @@ export const COURSE_PROPOSAL_SUBJECTS = [
   "社会",
 ] as const;
 
-export type CourseProposalSubject = (typeof COURSE_PROPOSAL_SUBJECTS)[number];
+export type CourseProposalSubject = string;
 
 export const COURSE_PROPOSAL_SEASONS = ["spring", "summer", "winter"] as const;
 
@@ -26,10 +26,7 @@ export type CourseProposalSubjectData = {
   teacherName: string;
 };
 
-export type CourseProposalSubjects = Record<
-  CourseProposalSubject,
-  CourseProposalSubjectData
->;
+export type CourseProposalSubjects = Record<string, CourseProposalSubjectData>;
 
 export type CourseProposalSheetData = {
   id: string;
@@ -37,6 +34,8 @@ export type CourseProposalSheetData = {
   teacherId: string;
   year: number;
   season: CourseProposalSeason;
+  subjectSlots: CourseProposalSubject[];
+  availableSubjects: CourseProposalSubject[];
   subjects: CourseProposalSubjects;
   student: {
     name: string;
@@ -44,7 +43,7 @@ export type CourseProposalSheetData = {
     grade: string;
   };
   teacherCampuses: string[];
-  editableSubjects: Record<CourseProposalSubject, boolean>;
+  editableSubjects: Record<string, boolean>;
   createdAt: string;
   updatedAt: string;
 };
@@ -55,7 +54,11 @@ export function createEmptyCourseProposalSubjects(): CourseProposalSubjects {
       subject,
       { advice: "", sessionCount: "", teacherName: "" },
     ]),
-  ) as CourseProposalSubjects;
+  );
+}
+
+export function createEmptySubjectData(): CourseProposalSubjectData {
+  return { advice: "", sessionCount: "", teacherName: "" };
 }
 
 export function defaultCourseProposalYear(): number {

@@ -53,6 +53,9 @@ function userCanAccessStudentSubject(
   memberRole: string | undefined,
   accessRole: "admin" | "teacher",
 ): boolean {
+  // 管理者はプログラムシート有無に関わらず担当外を許可
+  if (memberRole === "管理者" || accessRole === "admin") return true;
+
   const programSheetId = resolveProgramSheetId(studentId, subject);
   if (programSheetId) {
     return userCanViewProgramSheet(
@@ -63,7 +66,6 @@ function userCanAccessStudentSubject(
     );
   }
 
-  if (accessRole === "admin") return true;
   if (teacherId === userId) return true;
 
   const db = getDb();
