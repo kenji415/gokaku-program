@@ -71,7 +71,6 @@ type Assignment = {
 type MakerClientProps = {
   teacherId: string;
   teacherName: string;
-  roleLabel: string;
   isAdmin: boolean;
   showMakerCampusField: boolean;
   assignments: Assignment[];
@@ -84,7 +83,6 @@ type MakerClientProps = {
 export function MakerClient({
   teacherId,
   teacherName,
-  roleLabel,
   isAdmin,
   showMakerCampusField,
   assignments,
@@ -1520,7 +1518,7 @@ export function MakerClient({
 
   const makerHeaderProps = {
     title: "プログラムメーカー",
-    userLine: `${teacherName}（${roleLabel}）`,
+    userLine: teacherName,
     meta: showMakerCampusField ? <TeacherDefaultCampusField /> : undefined,
     showAdminLinks: isAdmin,
     showMemberAdminLink: isAdmin,

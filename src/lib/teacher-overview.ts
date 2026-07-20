@@ -124,14 +124,23 @@ function buildStudentTeacherCampusCache(
   return cache;
 }
 
-/** 校舎未設定の担当は一覧に含める（プログラムシート未作成など） */
+/** 校長の担当校舎絞り込み。未設定（空）は一致しない。自分の担当のみ例外で残す。 */
 function matchesTeacherOverviewCampusFilter(
   campusFilter: string | null,
   sheetCampus: string,
+  options?: { teacherId?: string; viewerId?: string },
 ): boolean {
   if (!campusFilter) return true;
-  if (!sheetCampus) return true;
-  return sheetCampus === campusFilter;
+  if (sheetCampus.trim() === campusFilter) return true;
+  if (
+    !sheetCampus.trim() &&
+    options?.teacherId &&
+    options?.viewerId &&
+    options.teacherId === options.viewerId
+  ) {
+    return true;
+  }
+  return false;
 }
 
 function monthHasContent(content: string | null | undefined): boolean {
@@ -345,9 +354,7 @@ export function userCanViewProgramSheet(
   if (memberRole === "校長") {
     const campusScope = resolveCampusScope(userId, memberRole);
     if (!campusScope) return false;
-    // 講師別一覧と同様: 校舎未設定シートは担当校舎スコープ内として閲覧可
-    if (!sheet.campus.trim()) return true;
-    return sheet.campus === campusScope;
+    return sheet.campus.trim() === campusScope;
   }
 
   return false;
@@ -400,7 +407,14 @@ export function getTeacherOverview(
       campusCache.get(campusKey),
     );
 
-    if (!matchesTeacherOverviewCampusFilter(campusFilter, sheetCampus)) continue;
+    if (
+      !matchesTeacherOverviewCampusFilter(campusFilter, sheetCampus, {
+        teacherId: row.teacherId,
+        viewerId,
+      })
+    ) {
+      continue;
+    }
 
     const allMonthRows =
       sheet && yearMonths.length > 0
@@ -491,7 +505,14 @@ export function getFinalStretchTeacherOverview(
       campusCache.get(campusKey),
     );
 
-    if (!matchesTeacherOverviewCampusFilter(campusFilter, sheetCampus)) continue;
+    if (
+      !matchesTeacherOverviewCampusFilter(campusFilter, sheetCampus, {
+        teacherId: row.teacherId,
+        viewerId,
+      })
+    ) {
+      continue;
+    }
 
     const rows =
       sheet
@@ -618,7 +639,17 @@ export function getCourseProposalTeacherOverview(
       );
     }
 
-    if (!matchesTeacherOverviewCampusFilter(campusFilter, sheetCampus)) continue;
+    const viewerIsAssignee = [...assignees.values()].some(
+      (assignee) => assignee.teacherId === viewerId,
+    );
+    if (
+      !matchesTeacherOverviewCampusFilter(campusFilter, sheetCampus, {
+        teacherId: viewerIsAssignee ? viewerId : firstAssignee?.teacherId,
+        viewerId,
+      })
+    ) {
+      continue;
+    }
 
     const proposalSheet = db
       .select()

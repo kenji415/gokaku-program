@@ -148,9 +148,7 @@ export function TeacherOverviewTab({ showAdminSearch = false }: Props) {
         students: teacher.students.filter(
           (student) =>
             matchesNameQuery(student.studentName, studentQuery) &&
-            (!campusFilter ||
-              !student.sheetCampus ||
-              student.sheetCampus === campusFilter),
+            (!campusFilter || student.sheetCampus === campusFilter),
         ),
       }))
       .filter((teacher) => teacher.students.length > 0);

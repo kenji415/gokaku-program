@@ -18,11 +18,7 @@ export async function AppHeader({
   return (
     <AppHeaderShell
       title={title}
-      userLine={
-        session
-          ? `${session.name}（${session.memberRole || (session.role === "admin" ? "管理者" : "講師")}）`
-          : undefined
-      }
+      userLine={session ? session.name : undefined}
       meta={meta}
       showMemberAdminLink={session?.role === "admin"}
       showTestScheduleLink={canViewTestSchedule(session)}

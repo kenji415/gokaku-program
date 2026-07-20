@@ -26,8 +26,6 @@ export default async function MakerPage() {
   const defaultCampus = getTeacherDefaultCampus(session.id);
   const showMakerCampusField =
     Boolean(session.memberRole) || session.role === "teacher";
-  const roleLabel =
-    session.memberRole || (session.role === "admin" ? "管理者" : "講師");
 
   return (
     <TeacherDefaultCampusProvider initialDefaultCampus={defaultCampus}>
@@ -39,7 +37,6 @@ export default async function MakerPage() {
         <MakerClient
           teacherId={session.id}
           teacherName={session.name}
-          roleLabel={roleLabel}
           isAdmin={session.role === "admin"}
           showMakerCampusField={showMakerCampusField}
           assignments={assignments}
