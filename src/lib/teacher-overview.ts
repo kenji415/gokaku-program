@@ -259,6 +259,24 @@ function getViewerAssignedCampus(userId: string): string | null {
   return viewer?.assignedCampus?.trim() || null;
 }
 
+/** 校長の校舎スコープ。担当校舎が無ければ基本校舎にフォールバック */
+function getPrincipalCampusScope(userId: string): string | null {
+  const db = getDb();
+  const viewer = db
+    .select({
+      assignedCampus: schema.users.assignedCampus,
+      defaultCampus: schema.users.defaultCampus,
+    })
+    .from(schema.users)
+    .where(eq(schema.users.id, userId))
+    .get();
+  return (
+    viewer?.assignedCampus?.trim() ||
+    viewer?.defaultCampus?.trim() ||
+    null
+  );
+}
+
 /** 講師別・シート閲覧の校舎絞り込み。null＝全校舎、undefined＝表示不可 */
 function resolveCampusScope(
   userId: string,
@@ -266,12 +284,11 @@ function resolveCampusScope(
 ): string | null | undefined {
   if (!supportsAssignedCampus(memberRole ?? "")) return null;
 
-  const assignedCampus = getViewerAssignedCampus(userId);
   if (memberRole === "管理者") {
-    return assignedCampus;
+    return getViewerAssignedCampus(userId);
   }
   if (memberRole === "校長") {
-    return assignedCampus ?? undefined;
+    return getPrincipalCampusScope(userId) ?? undefined;
   }
   return null;
 }
@@ -282,8 +299,7 @@ function resolveTeacherOverviewCampusScope(
   memberRole: string | undefined,
 ): string | null | undefined {
   if (memberRole === "校長") {
-    const assignedCampus = getViewerAssignedCampus(userId);
-    return assignedCampus ?? undefined;
+    return getPrincipalCampusScope(userId) ?? undefined;
   }
   return null;
 }
@@ -308,18 +324,6 @@ function userIsAssignedToSheet(
   return Boolean(assignment);
 }
 
-function userCanAccessCampusScopedSheet(
-  sheet: NonNullable<ReturnType<typeof getProgramSheet>>,
-  userId: string,
-  campusScope: string,
-): boolean {
-  if (sheet.teacherId === userId) return true;
-  if (userIsAssignedToSheet(userId, sheet.studentId, sheet.subject)) {
-    return true;
-  }
-  return sheet.campus === campusScope;
-}
-
 export function userCanViewProgramSheet(
   sheetId: string,
   userId: string,
@@ -332,15 +336,21 @@ export function userCanViewProgramSheet(
   // 管理者は講師別一覧と同様に全校舎・担当外を閲覧可（assignedCampus で弾かない）
   if (memberRole === "管理者" || accessRole === "admin") return true;
 
+  // 担当シートは校舎スコープより先に許可（校長の担当校舎未設定でも作成・編集可）
+  if (sheet.teacherId === userId) return true;
+  if (userIsAssignedToSheet(userId, sheet.studentId, sheet.subject)) {
+    return true;
+  }
+
   if (memberRole === "校長") {
     const campusScope = resolveCampusScope(userId, memberRole);
     if (!campusScope) return false;
-    return userCanAccessCampusScopedSheet(sheet, userId, campusScope);
+    // 講師別一覧と同様: 校舎未設定シートは担当校舎スコープ内として閲覧可
+    if (!sheet.campus.trim()) return true;
+    return sheet.campus === campusScope;
   }
 
-  if (sheet.teacherId === userId) return true;
-
-  return userIsAssignedToSheet(userId, sheet.studentId, sheet.subject);
+  return false;
 }
 
 export function canViewTeacherOverview(memberRole: string | undefined): boolean {

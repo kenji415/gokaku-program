@@ -111,6 +111,13 @@ export function MakerClient({
 
   const { defaultCampus } = useTeacherDefaultCampus();
   const [studentId, setStudentId] = useState(initialMakerState.studentId);
+  // 新規登録→実ID付与のあいだは同一インスタンスを維持（再マウントで保存flushが空振りしないように）
+  const [basicInfoKey, setBasicInfoKey] = useState(() =>
+    initialMakerState.studentId === NEW_STUDENT_ID
+      ? "new-initial"
+      : initialMakerState.studentId || "none",
+  );
+  const preserveBasicInfoKeyRef = useRef(false);
   const [subject, setSubject] = useState(initialMakerState.subject);
   const [startYearMonth, setStartYearMonth] = useState(
     initialMakerState.startYearMonth,
@@ -245,6 +252,20 @@ export function MakerClient({
     if (courseProposalYear >= 2000 && courseProposalYear <= 2100) return;
     setCourseProposalYear(defaultCourseProposalYear());
   }, [courseProposalYear]);
+
+  useEffect(() => {
+    if (preserveBasicInfoKeyRef.current) {
+      preserveBasicInfoKeyRef.current = false;
+      return;
+    }
+    setBasicInfoKey((prev) => {
+      if (studentId === NEW_STUDENT_ID) {
+        return prev.startsWith("new-") ? prev : `new-${Date.now()}`;
+      }
+      const next = studentId || "none";
+      return prev === next ? prev : next;
+    });
+  }, [studentId]);
 
   useEffect(() => {
     const resolved = makerStateFromSearchParams(
@@ -515,6 +536,8 @@ export function MakerClient({
   const handleStudentCreated = useCallback(
     (summary: { id: string; name: string; grade: string }) => {
       registerStudentOption(summary);
+      // 基本情報フォームを再マウントせず、登録済みデータ上で isNew だけ外す
+      preserveBasicInfoKeyRef.current = true;
       setStudentId(summary.id);
       maybeShowBasicInfoHint();
       router.refresh();
@@ -556,7 +579,8 @@ export function MakerClient({
 
   const saveSheet = useCallback(async (): Promise<boolean> => {
     const current = sheetRef.current;
-    if (!current) return false;
+    // 読込前は保存不要（失敗扱いにするとタブ切替を止めてしまう）
+    if (!current) return true;
 
     setSaving(true);
     setSwitchError("");
@@ -593,7 +617,7 @@ export function MakerClient({
 
   const saveFinalStretch = useCallback(async (): Promise<boolean> => {
     const current = finalStretchSheetRef.current;
-    if (!current) return false;
+    if (!current) return true;
 
     setSaving(true);
     setSwitchError("");
@@ -621,7 +645,7 @@ export function MakerClient({
 
   const saveFinalStretchTargetSchool = useCallback(async (): Promise<boolean> => {
     const current = finalStretchSheetRef.current;
-    if (!current) return false;
+    if (!current) return true;
 
     const res = await fetch(
       `/api/programs/students/${current.studentId}/basic-info`,
@@ -738,7 +762,7 @@ export function MakerClient({
 
   const saveCourseProposal = useCallback(async (): Promise<boolean> => {
     const current = courseProposalSheetRef.current;
-    if (!current) return false;
+    if (!current) return true;
 
     setSaving(true);
     setSwitchError("");
@@ -997,12 +1021,24 @@ export function MakerClient({
   const handleListCreateNew = (initialName?: string) => {
     void switchWithSave(() => {
       setNewStudentInitialName(initialName?.trim() ?? "");
+      if (studentId === NEW_STUDENT_ID) {
+        setBasicInfoKey(`new-${Date.now()}`);
+      }
       setStudentId(NEW_STUDENT_ID);
       setActiveTab("basic");
     });
   };
 
   const applyBasicInfoToSheet = useCallback((info: StudentBasicInfo) => {
+    const assignedSubjects = info.assignments
+      .filter((row) => row.teacherId)
+      .map((row) => row.subject);
+    if (assignedSubjects.length > 0) {
+      setSubject((prev) =>
+        assignedSubjects.includes(prev) ? prev : assignedSubjects[0],
+      );
+    }
+
     setSheet((prev) => {
       if (!prev || prev.studentId !== info.id) return prev;
       const subjectTeacher = info.assignments.find(
@@ -1690,7 +1726,7 @@ export function MakerClient({
           )
         ) : studentId && activeTab === "basic" ? (
           <TeacherStudentBasicInfo
-            key={studentId}
+            key={basicInfoKey}
             studentId={studentId}
             teacherId={teacherId}
             isAdmin={isAdmin}

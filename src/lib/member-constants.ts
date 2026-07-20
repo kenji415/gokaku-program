@@ -32,7 +32,13 @@ export const INITIAL_MEMBERS: MemberSeed[] = [
     memberRole: "校長",
     assignedCampus: "東京校",
   },
-  { name: "桑田　陽一", loginId: "桑田", password: "suganuma", memberRole: "校長" },
+  {
+    name: "桑田　陽一",
+    loginId: "桑田",
+    password: "suganuma",
+    memberRole: "校長",
+    assignedCampus: "麻布十番校",
+  },
   { name: "清水　栄太", loginId: "清水", password: "takeuchi", memberRole: "社員" },
   {
     name: "高田　いさむ",

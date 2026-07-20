@@ -100,6 +100,7 @@ export function TeacherStudentBasicInfo({
   const classNameLockedRef = useRef(false);
   const savedIdRef = useRef<string | null>(null);
   const skipNameLookupRef = useRef(false);
+  const skipNextLoadRef = useRef(false);
 
   useEffect(() => {
     infoRef.current = info;
@@ -111,6 +112,20 @@ export function TeacherStudentBasicInfo({
 
   useEffect(() => {
     let cancelled = false;
+
+    // 新規登録直後の studentId 更新では、すでに持っている保存結果を使い再取得しない
+    if (
+      skipNextLoadRef.current &&
+      !isNew &&
+      infoRef.current?.id === studentId
+    ) {
+      skipNextLoadRef.current = false;
+      savedIdRef.current = studentId;
+      setLoading(false);
+      setLoadError("");
+      return;
+    }
+
     setLoading(true);
     setLoadError("");
 
@@ -299,7 +314,8 @@ export function TeacherStudentBasicInfo({
 
   const persist = useCallback(async (): Promise<boolean> => {
     const current = infoRef.current;
-    if (!current) return false;
+    // 作成直後の再マウント／読込中は保存対象がない。失敗扱いにするとタブ切替を止めてしまう。
+    if (!current) return true;
     if (!current.name.trim()) return true;
 
     const payload = buildPayload(current, classNameLockedRef.current);
@@ -322,6 +338,7 @@ export function TeacherStudentBasicInfo({
       const saved = (await res.json()) as StudentBasicInfo;
       savedIdRef.current = saved.id;
       skipNameLookupRef.current = true;
+      skipNextLoadRef.current = true;
       classNameLockedRef.current = saved.classNameLocked;
       setInfo(saved);
       onStudentCreated?.({
