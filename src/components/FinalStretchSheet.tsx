@@ -313,7 +313,7 @@ export function FinalStretchSheet({
                 <div className="final-stretch-policy-fields">
                   {useEditorColumnLayout ? (
                     <div
-                      className={`final-stretch-policy-leading-spacer${showEditorControls ? " screen-only" : ""}`}
+                      className="final-stretch-policy-leading-spacer"
                       aria-hidden
                     />
                   ) : null}
@@ -380,7 +380,7 @@ export function FinalStretchSheet({
                   <tr>
                     {useEditorColumnLayout ? (
                       <th
-                        className={`final-stretch-month-add-head${showEditorControls ? " screen-only" : ""}`}
+                        className="final-stretch-month-add-head"
                         aria-hidden
                       />
                     ) : null}
@@ -433,14 +433,14 @@ export function FinalStretchSheet({
                       >
                         {index === 0 && useEditorColumnLayout ? (
                           <td
-                            className={`final-stretch-month-add${showEditorControls ? " screen-only" : ""}`}
+                            className="final-stretch-month-add"
                             rowSpan={monthRows.length}
                             aria-hidden={!showEditorControls}
                           >
                             {showEditorControls ? (
                               <button
                                 type="button"
-                                className="final-stretch-month-add-btn"
+                                className="final-stretch-month-add-btn screen-only"
                                 onClick={() => addRow(month.key)}
                                 disabled={!canAddFinalStretchRow(sheet.rows.length)}
                                 title={

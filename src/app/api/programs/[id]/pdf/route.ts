@@ -16,6 +16,7 @@ import {
   recordProgramSheetPdfExport,
 } from "@/lib/programs";
 import { userCanViewProgramSheet } from "@/lib/teacher-overview";
+import { normalizeProgramContentFontSize } from "@/lib/program-content-font";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -44,6 +45,16 @@ export async function POST(
     )
   ) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  let contentFontSize = normalizeProgramContentFontSize(sheet.contentFontSize);
+  try {
+    const body = (await request.json()) as { contentFontSize?: unknown };
+    if (body.contentFontSize !== undefined) {
+      contentFontSize = normalizeProgramContentFontSize(body.contentFontSize);
+    }
+  } catch {
+    // body なしでもシート保存値で出力
   }
 
   const unfilledLabels = getUnfilledMonthLabels(sheet.months);
@@ -76,6 +87,7 @@ export async function POST(
       filenameBase,
       sessionToken,
       baseUrl: resolvePdfBaseUrl(request),
+      contentFontSize,
     });
     browser = result.browser;
     const pdfExportedAt = recordProgramSheetPdfExport(id);

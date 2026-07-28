@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import type { ProgramMonthData, ProgramMonthTestPoolItem, StudentTestResultInput } from "@/lib/programs";
 import {
@@ -70,6 +70,8 @@ type ProgramSheetProps = {
   ) => Promise<boolean>;
   availableTests?: Record<string, ProgramMonthTestPoolItem[]>;
   allTestsForMonth?: Record<string, ProgramMonthTestPoolItem[]>;
+  /** 月ボックス対策内容の共通フォントサイズ（px）。全ボックス同一 */
+  contentFontSize?: number;
 };
 
 function monthBoxOnRow(index: number, row: "top" | "bottom"): boolean {
@@ -400,7 +402,7 @@ function StartBox({
           <label className="program-sheet-content flex min-h-0 min-w-0 shrink-0 flex-col gap-0.5 leading-relaxed">
             <span className="shrink-0">開始時成績：</span>
             <textarea
-              className="program-sheet-content box-border min-h-0 min-w-0 w-full max-w-full resize-none border-0 bg-transparent text-[10px] leading-relaxed outline-none"
+              className="program-sheet-content box-border min-h-0 min-w-0 w-full max-w-full resize-none border-0 bg-transparent leading-relaxed outline-none"
               rows={2}
               value={initialMockExams}
               placeholder="模試名・成績など"
@@ -420,7 +422,7 @@ function StartBox({
               課題：
             </span>
             <textarea
-              className="program-sheet-content box-border min-h-0 min-w-0 w-full max-w-full flex-1 resize-none border-0 bg-transparent text-[10px] leading-relaxed outline-none"
+              className="program-sheet-content box-border min-h-0 min-w-0 w-full max-w-full flex-1 resize-none border-0 bg-transparent leading-relaxed outline-none"
               value={initialChallenges}
               placeholder={`${subject}の課題を入力`}
               aria-label="指導開始時の課題"
@@ -999,7 +1001,7 @@ function MonthBox({
 
         {editable ? (
           <textarea
-            className="program-sheet-content box-border min-h-0 min-w-0 w-full max-w-full flex-1 resize-none border-0 bg-transparent text-[10px] leading-relaxed outline-none"
+            className="program-sheet-content box-border min-h-0 min-w-0 w-full max-w-full flex-1 resize-none border-0 bg-transparent leading-relaxed outline-none"
             value={month.content}
             placeholder="対策内容を入力"
             onChange={(e) =>
@@ -1045,12 +1047,18 @@ export function ProgramSheet({
   onTestResultSave,
   allTestsForMonth = {},
   availableTests = {},
+  contentFontSize,
 }: ProgramSheetProps) {
   const monthTestPool = (yearMonth: string) =>
     allTestsForMonth[yearMonth] ?? availableTests[yearMonth] ?? [];
   const showHeaderMeta = editable || Boolean(teacherName) || Boolean(campus);
   const showSubjectSelect =
     Boolean(editable) && subjectOptions.length > 1 && Boolean(onSubjectChange);
+
+  const contentFontPx =
+    typeof contentFontSize === "number" && contentFontSize > 0
+      ? contentFontSize
+      : 10;
 
   const [showTestEditHint, setShowTestEditHint] = useState(false);
   const testEditHintKey = "maker:testEditHintSeen";
@@ -1101,7 +1109,14 @@ export function ProgramSheet({
   };
 
   return (
-    <div className="program-sheet mx-auto box-border border border-neutral-300 text-gray-900">
+    <div
+      className="program-sheet mx-auto box-border border border-neutral-300 text-gray-900"
+      style={
+        {
+          "--program-content-font-size": `${contentFontPx}px`,
+        } as CSSProperties
+      }
+    >
       <div className="program-sheet-header-bg" aria-hidden />
       <div className="program-sheet-main-bg" aria-hidden />
       <div className="program-sheet-footer-bg" aria-hidden />

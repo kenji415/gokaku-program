@@ -73,6 +73,7 @@ async function exportViewerSheetToPdfWithBrowser(
     sheetId: string;
     sessionToken: string;
     baseUrl: string;
+    contentFontSize?: number;
   },
 ): Promise<Buffer> {
   const page = await browser.newPage();
@@ -86,10 +87,17 @@ async function exportViewerSheetToPdfWithBrowser(
       httpOnly: true,
     });
 
-    await page.goto(`${params.baseUrl}/programs/${params.sheetId}/print`, {
-      waitUntil: "load",
-      timeout: 120_000,
-    });
+    const fontQuery =
+      typeof params.contentFontSize === "number" && params.contentFontSize > 0
+        ? `?contentFontSize=${encodeURIComponent(String(params.contentFontSize))}`
+        : "";
+    await page.goto(
+      `${params.baseUrl}/programs/${params.sheetId}/print${fontQuery}`,
+      {
+        waitUntil: "load",
+        timeout: 120_000,
+      },
+    );
 
     // B5横（257×182mm）に合わせ、min-h-screen による2枚目の白紙を防ぐ
     await page.setViewport({ width: 972, height: 688, deviceScaleFactor: 1 });
@@ -146,6 +154,7 @@ export async function renderProgramSheetPdf(params: {
   request?: Request;
   baseUrl?: string;
   browser?: Browser;
+  contentFontSize?: number;
 }): Promise<{ buffer: Buffer; fileName: string; browser: Browser }> {
   const fileName = `${sanitizePdfFilename(params.filenameBase)}.pdf`;
   const baseUrl = params.baseUrl ?? resolvePdfServerBaseUrl();
@@ -157,6 +166,7 @@ export async function renderProgramSheetPdf(params: {
       sheetId: params.sheetId,
       sessionToken: params.sessionToken,
       baseUrl,
+      contentFontSize: params.contentFontSize,
     });
     return { buffer, fileName, browser };
   } catch (error) {

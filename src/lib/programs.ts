@@ -18,6 +18,7 @@ import type { RecentTestResult } from "./test-results";
 import type { StudentTestResultInput } from "./test-result-types";
 import { getCachedTestSchedules } from "./test-schedule-cache";
 import { resolveStudentClassName } from "./student-class-name";
+import { normalizeProgramContentFontSize } from "./program-content-font";
 export type { StudentTestResultInput } from "./test-result-types";
 export { EMPTY_TEST_RESULT } from "./test-result-types";
 
@@ -124,6 +125,8 @@ export type ProgramSheetData = {
     targetSchool: string;
   };
   teacher: { name: string };
+  /** 月ボックス対策内容のフォントサイズ（px）。未設定時はデフォルト */
+  contentFontSize: number;
   months: ProgramMonthData[];
 };
 
@@ -930,6 +933,7 @@ export function getProgramSheet(sheetId: string): ProgramSheetData | null {
       targetSchool: trimOrEmpty(student.targetSchool),
     },
     teacher: { name: teacher.name },
+    contentFontSize: normalizeProgramContentFontSize(sheet.contentFontSize),
     months: monthsData,
   };
 }
@@ -1017,6 +1021,7 @@ export function saveProgramSheet(
     goal: string;
     initialMockExams: string;
     initialChallenges: string;
+    contentFontSize?: number;
     months: {
       id: string;
       monthTitle: string;
@@ -1051,6 +1056,9 @@ export function saveProgramSheet(
           .where(inArray(schema.programMonths.id, monthIds))
           .all();
   const monthById = new Map(monthRows.map((month) => [month.id, month]));
+  const contentFontSize = normalizeProgramContentFontSize(
+    payload.contentFontSize ?? sheet.contentFontSize,
+  );
 
   db.transaction((tx) => {
     for (const month of payload.months) {
@@ -1101,6 +1109,7 @@ export function saveProgramSheet(
         goal: payload.goal.trim() || null,
         initialMockExams: payload.initialMockExams.trim() || null,
         initialChallenges: payload.initialChallenges.trim() || null,
+        contentFontSize,
         updatedAt: now,
       })
       .where(eq(schema.programSheets.id, sheetId))

@@ -80,6 +80,7 @@ body {
   max-width: 100%;
   overflow: hidden;
   background-color: white;
+  --program-content-font-size: 10px;
 }
 
 .program-sheet:has(.month-box--result-open),
@@ -186,32 +187,6 @@ body {
 
 .program-sheet-header-title {
   min-width: 0;
-}
-
-.program-sheet-header-subject-select {
-  display: inline-block;
-  max-width: 8em;
-  margin: 0;
-  padding: 0 0.15em;
-  border: none;
-  border-bottom: 1px dashed rgba(0, 0, 0, 0.25);
-  background: transparent;
-  font: inherit;
-  font-size: inherit;
-  line-height: inherit;
-  letter-spacing: inherit;
-  color: inherit;
-  vertical-align: baseline;
-  cursor: pointer;
-}
-
-.program-sheet-header-subject-select:focus {
-  outline: none;
-  border-bottom-color: rgba(30, 58, 95, 0.55);
-}
-
-.print-only {
-  display: none;
 }
 
 .program-sheet-header-goal {
@@ -814,11 +789,15 @@ body {
   overflow: hidden;
   overflow-wrap: anywhere;
   word-break: break-word;
+  font-size: var(--program-content-font-size, 10px);
+  line-height: 1.35;
 }
 
 .program-sheet textarea.program-sheet-content {
   overflow: auto;
   scrollbar-width: thin;
+  font-size: var(--program-content-font-size, 10px);
+  line-height: 1.35;
 }
 
 /* 印刷時: 画面用コントロール非表示 */
@@ -829,10 +808,6 @@ body {
 
   .screen-only {
     display: none !important;
-  }
-
-  .print-only {
-    display: inline !important;
   }
 
   html,
@@ -1675,6 +1650,13 @@ body {
     border: none !important;
   }
 
+  /* 編集用コントロールは隠すが、行追加列の枠は残して列ずれを防ぐ */
+  .final-stretch-month-add-btn,
+  .final-stretch-row-delete,
+  .final-stretch-col-resize {
+    display: none !important;
+  }
+
   .final-stretch-policy-section,
   .final-stretch-policy-fields,
   .final-stretch-policy-box {
@@ -1862,21 +1844,6 @@ body {
   font-size: 14px;
   font-weight: 600;
   line-height: 1.3;
-}
-
-.course-proposal-subject-head-select {
-  width: 100%;
-  border: 0;
-  background: transparent;
-  font: inherit;
-  font-weight: 600;
-  color: inherit;
-  outline: none;
-  cursor: pointer;
-}
-
-.course-proposal-subject-head-select:focus {
-  box-shadow: inset 0 0 0 1px #1e3a5f;
 }
 
 .course-proposal-subject-body {

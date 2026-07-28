@@ -55,6 +55,7 @@ export async function PUT(
     goal: string;
     initialMockExams: string;
     initialChallenges: string;
+    contentFontSize?: number;
     months: {
       id: string;
       monthTitle: string;
@@ -73,6 +74,7 @@ export async function PUT(
     goal: body.goal ?? existing.goal,
     initialMockExams: body.initialMockExams ?? existing.initialMockExams,
     initialChallenges: body.initialChallenges ?? existing.initialChallenges,
+    contentFontSize: body.contentFontSize ?? existing.contentFontSize,
     months: body.months,
   });
   return NextResponse.json({ ok: true });

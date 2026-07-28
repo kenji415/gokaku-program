@@ -28,6 +28,11 @@ import { hasScoreResult, EMPTY_TEST_RESULT } from "@/lib/test-result-types";
 import { compareByGradeThenName, gradeSortRank } from "@/lib/constants";
 import { NEW_STUDENT_ID } from "@/lib/student-constants";
 import type { StudentBasicInfo } from "@/lib/student-basic-info-types";
+import {
+  adjustProgramContentFontSize,
+  DEFAULT_PROGRAM_CONTENT_FONT_SIZE,
+  normalizeProgramContentFontSize,
+} from "@/lib/program-content-font";
 import { isBrokenStudentName } from "@/lib/student-spreadsheet-utils";
 import { formatGraduationYear } from "@/lib/graduation";
 import { useTeacherDefaultCampus } from "@/components/TeacherDefaultCampus";
@@ -591,6 +596,7 @@ export function MakerClient({
         goal: current.goal,
         initialMockExams: current.initialMockExams,
         initialChallenges: current.initialChallenges,
+        contentFontSize: current.contentFontSize,
         months: current.months.map((m) => ({
           id: m.id,
           monthTitle: m.monthTitle,
@@ -1366,6 +1372,10 @@ export function MakerClient({
 
       const res = await fetch(`/api/programs/${sheet.id}/pdf`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contentFontSize: sheet.contentFontSize,
+        }),
       });
       const result = await savePdfFromResponse(res, `${pdfFilename}.pdf`);
 
@@ -1672,6 +1682,7 @@ export function MakerClient({
             onTestCreate={handleTestCreate}
             onTestResultSave={handleTestResultSave}
             allTestsForMonth={allTestsForMonth}
+            contentFontSize={sheet.contentFontSize}
           />
         ) : activeTab === "final-stretch" ? (
           finalStretchLoadError ? (
@@ -2066,6 +2077,58 @@ export function MakerClient({
               <div>通塾・志望校・開始時成績・目標は全科目で共有されます</div>
             ) : activeTab === "score-history" ? (
               <div>チェックした模試の偏差値を左のグラフに表示します（古い順→新しい順）</div>
+            ) : activeTab === "program" && sheet ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <span>対策文字サイズ</span>
+                <button
+                  type="button"
+                  className="rounded border bg-white px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+                  disabled={
+                    normalizeProgramContentFontSize(sheet.contentFontSize) <= 6
+                  }
+                  aria-label="対策文字を小さく"
+                  onClick={() => {
+                    setSheet((prev) => {
+                      if (!prev) return prev;
+                      const next = adjustProgramContentFontSize(
+                        normalizeProgramContentFontSize(prev.contentFontSize),
+                        "smaller",
+                      );
+                      return { ...prev, contentFontSize: next };
+                    });
+                    bumpSave();
+                  }}
+                >
+                  小さく
+                </button>
+                <button
+                  type="button"
+                  className="rounded border bg-white px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+                  disabled={
+                    normalizeProgramContentFontSize(sheet.contentFontSize) >= 10
+                  }
+                  aria-label="対策文字を大きく"
+                  onClick={() => {
+                    setSheet((prev) => {
+                      if (!prev) return prev;
+                      const next = adjustProgramContentFontSize(
+                        normalizeProgramContentFontSize(prev.contentFontSize),
+                        "larger",
+                      );
+                      return { ...prev, contentFontSize: next };
+                    });
+                    bumpSave();
+                  }}
+                >
+                  大きく
+                </button>
+                <span className="tabular-nums text-gray-600">
+                  {sheet
+                    ? normalizeProgramContentFontSize(sheet.contentFontSize)
+                    : DEFAULT_PROGRAM_CONTENT_FONT_SIZE}
+                  px
+                </span>
+              </div>
             ) : null}
           </div>
 

@@ -74,6 +74,7 @@ export const programSheets = sqliteTable("program_sheets", {
   targetSchool: text("target_school"),
   initialMockExams: text("initial_mock_exams"),
   initialChallenges: text("initial_challenges"),
+  contentFontSize: integer("content_font_size"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
   pdfExportedAt: text("pdf_exported_at"),

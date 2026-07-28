@@ -139,6 +139,13 @@ function ensureSchema(sqlite: Database.Database) {
     `);
   }
 
+  const sheetColumnsWithFont = sqlite
+    .prepare("PRAGMA table_info(program_sheets)")
+    .all() as { name: string }[];
+  if (!sheetColumnsWithFont.some((c) => c.name === "content_font_size")) {
+    sqlite.exec(`ALTER TABLE program_sheets ADD COLUMN content_font_size INTEGER`);
+  }
+
   const testScheduleColumns = sqlite
     .prepare("PRAGMA table_info(test_schedules)")
     .all() as { name: string }[];
