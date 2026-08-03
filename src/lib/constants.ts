@@ -16,6 +16,9 @@ export const GRADES = [
   "中学1年",
   "中学2年",
   "中学3年",
+  "高校1年",
+  "高校2年",
+  "高校3年",
 ] as const;
 
 export function gradeSortRank(grade: string): number {
@@ -27,7 +30,11 @@ export function gradeSortRank(grade: string): number {
 export function formatGradeDisplay(grade: string): string {
   const trimmed = grade.trim();
   if (!trimmed) return "";
-  if (trimmed.startsWith("小学") || trimmed.startsWith("中学")) {
+  if (
+    trimmed.startsWith("小学") ||
+    trimmed.startsWith("中学") ||
+    trimmed.startsWith("高校")
+  ) {
     return trimmed;
   }
   if (/^[1-6]年$/.test(trimmed)) {

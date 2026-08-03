@@ -13,3 +13,10 @@ export function canEditTestSchedule(
 ): boolean {
   return session?.role === "admin";
 }
+
+/** プログラムシートの「テスト編集」からの新規テスト登録（ログイン済みなら可） */
+export function canCreateProgramSheetTest(
+  session: Pick<SessionUser, "id"> | null | undefined,
+): boolean {
+  return Boolean(session?.id);
+}

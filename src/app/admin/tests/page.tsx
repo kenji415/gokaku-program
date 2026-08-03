@@ -33,7 +33,8 @@ export default async function AdminTestsPage() {
           </p>
         ) : (
           <p className="mb-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-            閲覧専用です。テストの追加・編集・削除は管理者のみ行えます。誤って削除すると、紐づく成績入力などに影響する可能性があります。
+            閲覧専用です。テスト日程マスタの一括追加・編集・削除は管理者のみ行えます。
+            個別にテストを追加したい場合は、プログラムメーカーの月ボックス「テスト編集」→「＋新規テスト」から登録できます。
           </p>
         )}
         <TestScheduleSpreadsheet

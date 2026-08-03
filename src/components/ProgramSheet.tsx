@@ -812,7 +812,7 @@ function MonthBox({
                     className="w-64 rounded-lg border border-amber-300 bg-white p-3 text-left text-gray-800 shadow-xl"
                   >
                     <p className="text-xs leading-relaxed">
-                      テストを追加する場合は、こちらの「テスト編集」から行えます。
+                      テストの追加は、こちらの「テスト編集」→「＋新規テスト」から行えます（管理者以外でも登録できます）。
                     </p>
                     <div className="mt-2 text-right">
                       <button
@@ -964,7 +964,7 @@ function MonthBox({
                         </button>
                       </div>
                     </div>
-                  ) : (
+                  ) : onTestCreate ? (
                     <button
                       type="button"
                       className="month-box-test-add-btn mt-1 text-[10px] text-gray-600 underline"
@@ -976,7 +976,7 @@ function MonthBox({
                     >
                       ＋新規テスト
                     </button>
-                  )}
+                  ) : null}
                 </div>
               )}
             </div>

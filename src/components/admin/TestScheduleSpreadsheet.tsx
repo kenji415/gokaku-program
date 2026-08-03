@@ -420,7 +420,7 @@ export function TestScheduleSpreadsheet({
         <span className="text-xs text-gray-600">
           {readOnly ? (
             <>
-              テスト日程の一覧です。変更が必要な場合は管理者にお問い合わせください。
+              テスト日程の一覧です。マスタの変更は管理者のみです。個別追加はプログラムメーカーの「テスト編集」から行えます。
             </>
           ) : (
             <>
