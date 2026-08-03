@@ -699,9 +699,15 @@ function setStudentMonthTests(
   testIds: string[],
 ) {
   const db = getDb();
+  const student = db
+    .select({ grade: schema.students.grade })
+    .from(schema.students)
+    .where(eq(schema.students.id, studentId))
+    .get();
   const uniqueIds = filterTestIdsForYearMonth(
     [...new Set(testIds)],
     yearMonth,
+    student?.grade,
   );
 
   db.transaction((tx) => {
@@ -737,13 +743,112 @@ function seedStudentMonthTestsIfEmpty(
   setStudentMonthTests(studentId, yearMonth, testIds);
 }
 
+/** 現在の学年と一致しないテスト紐づけを削除する（学年変更後の6年テスト残りなど） */
+function removeStudentMonthTestsWithWrongGrade(
+  studentId: string,
+  grade: string,
+  yearMonths: string[],
+) {
+  if (!grade.trim() || yearMonths.length === 0) return;
+
+  const db = getDb();
+  const links = db
+    .select({
+      id: schema.studentMonthTests.id,
+      testScheduleId: schema.studentMonthTests.testScheduleId,
+    })
+    .from(schema.studentMonthTests)
+    .where(
+      and(
+        eq(schema.studentMonthTests.studentId, studentId),
+        inArray(schema.studentMonthTests.yearMonth, yearMonths),
+      ),
+    )
+    .all();
+
+  if (links.length === 0) return;
+
+  const byId = new Map(getCachedTestSchedules().map((row) => [row.id, row]));
+  for (const link of links) {
+    const test = byId.get(link.testScheduleId);
+    if (!test || test.grade !== grade) {
+      db.delete(schema.studentMonthTests)
+        .where(eq(schema.studentMonthTests.id, link.id))
+        .run();
+    }
+  }
+}
+
+/**
+ * 生徒の全プログラムシートについて、学年不一致テストを外し、空月は現学年のデフォルトで埋め直す。
+ * 基本情報の学年変更後に呼ぶ。
+ */
+export function syncStudentMonthTestsToCurrentGrade(studentId: string) {
+  const db = getDb();
+  const student = db
+    .select({ grade: schema.students.grade })
+    .from(schema.students)
+    .where(eq(schema.students.id, studentId))
+    .get();
+  if (!student?.grade?.trim()) return;
+
+  const sheets = db
+    .select({
+      id: schema.programSheets.id,
+      startYearMonth: schema.programSheets.startYearMonth,
+    })
+    .from(schema.programSheets)
+    .where(eq(schema.programSheets.studentId, studentId))
+    .all();
+
+  if (sheets.length === 0) {
+    // シート未作成でも、紐づいている古い学年テストは消す
+    const links = db
+      .select({
+        id: schema.studentMonthTests.id,
+        yearMonth: schema.studentMonthTests.yearMonth,
+        testScheduleId: schema.studentMonthTests.testScheduleId,
+      })
+      .from(schema.studentMonthTests)
+      .where(eq(schema.studentMonthTests.studentId, studentId))
+      .all();
+    if (links.length === 0) return;
+    const byId = new Map(getCachedTestSchedules().map((row) => [row.id, row]));
+    for (const link of links) {
+      const test = byId.get(link.testScheduleId);
+      if (!test || test.grade !== student.grade) {
+        db.delete(schema.studentMonthTests)
+          .where(eq(schema.studentMonthTests.id, link.id))
+          .run();
+      }
+    }
+    return;
+  }
+
+  for (const sheet of sheets) {
+    ensureProgramMonthsForSheet(sheet.id, sheet.startYearMonth, studentId);
+  }
+}
+
 function ensureProgramMonthsForSheet(
   sheetId: string,
   startYearMonth: string,
   studentId: string,
 ) {
   const db = getDb();
+  const student = db
+    .select({ grade: schema.students.grade })
+    .from(schema.students)
+    .where(eq(schema.students.id, studentId))
+    .get();
+  const studentGrade = student?.grade?.trim() ?? "";
+
   const slots = buildMonthSlots(startYearMonth);
+  const yearMonths = slots.map((slot) => slot.yearMonth);
+  if (studentGrade) {
+    removeStudentMonthTestsWithWrongGrade(studentId, studentGrade, yearMonths);
+  }
+
   const existing = db
     .select()
     .from(schema.programMonths)
@@ -816,6 +921,7 @@ function loadVisibleMonths(
 function buildMonthsData(
   months: ProgramMonthRow[],
   studentId: string,
+  studentGrade: string,
 ): ProgramMonthData[] {
   const db = getDb();
   const yearMonths = months.map((m) => m.yearMonth);
@@ -841,6 +947,7 @@ function buildMonthsData(
 
   const testMap = new Map(tests.map((t) => [t.id, t]));
   const resultMap = getStudentTestResultsForIds(studentId, testIds);
+  const grade = studentGrade.trim();
 
   return months.map((m) => ({
     id: m.id,
@@ -871,7 +978,11 @@ function buildMonthsData(
         })
         .filter((row) => {
           const test = testMap.get(row.id);
-          return test ? testBelongsToYearMonth(test, m.yearMonth) : false;
+          if (!test) return false;
+          if (!testBelongsToYearMonth(test, m.yearMonth)) return false;
+          // 基本情報の学年とテスト学年が違うものは表示しない
+          if (grade && test.grade !== grade) return false;
+          return true;
         }),
     ).map(({ id, displayText, result }) => ({ id, displayText, result })),
   }));
@@ -904,7 +1015,7 @@ export function getProgramSheet(sheetId: string): ProgramSheetData | null {
 
   ensureProgramMonthsForSheet(sheet.id, sheet.startYearMonth, sheet.studentId);
   const months = loadVisibleMonths(sheet.id, sheet.startYearMonth);
-  const monthsData = buildMonthsData(months, sheet.studentId);
+  const monthsData = buildMonthsData(months, sheet.studentId, student.grade);
   const { campus, usesDefaultCampus } = resolveSheetCampus(
     sheet.campus,
     teacher.defaultCampus,
@@ -1002,13 +1113,18 @@ export function findOrCreateProgramSheet(params: {
 function filterTestIdsForYearMonth(
   testIds: string[],
   yearMonth: string,
+  grade?: string,
 ): string[] {
   if (testIds.length === 0) return [];
   const byId = new Map(getCachedTestSchedules().map((row) => [row.id, row]));
+  const gradeTrim = grade?.trim() ?? "";
   const allowed = new Set(
     testIds.filter((id) => {
       const row = byId.get(id);
-      return row ? testBelongsToYearMonth(row, yearMonth) : false;
+      if (!row) return false;
+      if (!testBelongsToYearMonth(row, yearMonth)) return false;
+      if (gradeTrim && row.grade !== gradeTrim) return false;
+      return true;
     }),
   );
   return testIds.filter((id) => allowed.has(id));
@@ -1046,6 +1162,12 @@ export function saveProgramSheet(
     .where(eq(schema.users.id, sheet.teacherId))
     .get();
 
+  const student = db
+    .select({ grade: schema.students.grade })
+    .from(schema.students)
+    .where(eq(schema.students.id, sheet.studentId))
+    .get();
+
   const monthIds = payload.months.map((month) => month.id);
   const monthRows =
     monthIds.length === 0
@@ -1076,6 +1198,7 @@ export function saveProgramSheet(
       const filteredTestIds = filterTestIdsForYearMonth(
         month.testIds,
         monthRow.yearMonth,
+        student?.grade,
       );
       const uniqueIds = [...new Set(filteredTestIds)];
 

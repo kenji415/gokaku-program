@@ -14,6 +14,7 @@ import {
   isStudentClassNameLocked,
   syncStudentClassNameFromResults,
 } from "./student-class-name";
+import { syncStudentMonthTestsToCurrentGrade } from "./programs";
 import type {
   StudentBasicInfo,
   StudentBasicInfoInput,
@@ -194,6 +195,18 @@ export function patchStudentBasicInfo(
 ) {
   const db = getDb();
 
+  const before =
+    input.grade !== undefined || input.mockExamPattern !== undefined
+      ? db
+          .select({
+            grade: schema.students.grade,
+            mockExamPattern: schema.students.mockExamPattern,
+          })
+          .from(schema.students)
+          .where(eq(schema.students.id, studentId))
+          .get()
+      : null;
+
   const patch = {
     name:
       input.name !== undefined
@@ -239,6 +252,18 @@ export function patchStudentBasicInfo(
 
   if (input.assignments !== undefined) {
     syncStudentAssignments(studentId, input.assignments);
+  }
+
+  const gradeChanged =
+    input.grade !== undefined &&
+    (before?.grade?.trim() ?? "") !== (input.grade.trim() || "");
+  const patternChanged =
+    input.mockExamPattern !== undefined &&
+    (before?.mockExamPattern?.trim() ?? "") !==
+      (input.mockExamPattern.trim() || "");
+
+  if (gradeChanged || patternChanged) {
+    syncStudentMonthTestsToCurrentGrade(studentId);
   }
 }
 
