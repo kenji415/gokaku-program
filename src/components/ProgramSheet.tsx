@@ -831,54 +831,56 @@ function MonthBox({
                   className="month-box-test-panel"
                   onMouseDown={(e) => e.stopPropagation()}
                 >
-                  {month.tests.map((t) => (
-                    <label
-                      key={`selected-${t.id}`}
-                      className="month-box-test-option flex items-start gap-1.5 text-left text-[10px] leading-snug text-red-600"
-                    >
-                      <input
-                        type="checkbox"
-                        className="mt-0.5 shrink-0 scale-110"
-                        checked
-                        onChange={(e) => toggleTest(t.id, e.target.checked)}
+                  <div className="month-box-test-panel-list">
+                    {month.tests.map((t) => (
+                      <label
+                        key={`selected-${t.id}`}
+                        className="month-box-test-option flex items-start gap-1.5 text-left text-[10px] leading-snug text-red-600"
+                      >
+                        <input
+                          type="checkbox"
+                          className="mt-0.5 shrink-0 scale-110"
+                          checked
+                          onChange={(e) => toggleTest(t.id, e.target.checked)}
+                        />
+                        <span>{t.displayText}</span>
+                      </label>
+                    ))}
+                    {otherTests.length > 0 && month.tests.length > 0 && (
+                      <div
+                        className="my-1 border-t border-gray-200"
+                        aria-hidden
                       />
-                      <span>{t.displayText}</span>
-                    </label>
-                  ))}
-                  {otherTests.length > 0 && month.tests.length > 0 && (
-                    <div
-                      className="my-1 border-t border-gray-200"
-                      aria-hidden
-                    />
-                  )}
-                  {otherTests.map((t) => (
-                    <label
-                      key={t.id}
-                      className="month-box-test-option flex items-start gap-1.5 text-left text-[10px] leading-snug text-red-600"
-                    >
-                      <input
-                        type="checkbox"
-                        className="mt-0.5 shrink-0 scale-110"
-                        checked={false}
-                        onChange={(e) => toggleTest(t.id, e.target.checked)}
-                      />
-                      <span className="min-w-0">
-                        {t.cramSchool.trim() ? (
-                          <span className="mr-1 shrink-0 text-gray-700">
-                            {t.cramSchool.trim()}
-                          </span>
-                        ) : null}
-                        {t.displayText}
-                      </span>
-                    </label>
-                  ))}
-                  {month.tests.length === 0 &&
-                    otherTests.length === 0 &&
-                    !addingTest && (
-                    <div className="text-[10px] text-gray-500">候補なし</div>
-                  )}
+                    )}
+                    {otherTests.map((t) => (
+                      <label
+                        key={t.id}
+                        className="month-box-test-option flex items-start gap-1.5 text-left text-[10px] leading-snug text-red-600"
+                      >
+                        <input
+                          type="checkbox"
+                          className="mt-0.5 shrink-0 scale-110"
+                          checked={false}
+                          onChange={(e) => toggleTest(t.id, e.target.checked)}
+                        />
+                        <span className="min-w-0">
+                          {t.cramSchool.trim() ? (
+                            <span className="mr-1 shrink-0 text-gray-700">
+                              {t.cramSchool.trim()}
+                            </span>
+                          ) : null}
+                          {t.displayText}
+                        </span>
+                      </label>
+                    ))}
+                    {month.tests.length === 0 &&
+                      otherTests.length === 0 &&
+                      !addingTest && (
+                      <div className="text-[10px] text-gray-500">候補なし</div>
+                    )}
+                  </div>
                   {addingTest ? (
-                    <div className="month-box-test-add-form mt-1 space-y-1 text-left text-gray-800">
+                    <div className="month-box-test-panel-footer month-box-test-add-form space-y-1 text-left text-gray-800">
                       <input
                         type="text"
                         className="month-box-test-field w-full border border-gray-300"
@@ -965,17 +967,19 @@ function MonthBox({
                       </div>
                     </div>
                   ) : onTestCreate ? (
-                    <button
-                      type="button"
-                      className="month-box-test-add-btn mt-1 text-[10px] text-gray-600 underline"
-                      onClick={() => {
-                        setAddingTest(true);
-                        setNewTestGrade(defaultGrade);
-                        setNewTestCramSchool(defaultCramSchool);
-                      }}
-                    >
-                      ＋新規テスト
-                    </button>
+                    <div className="month-box-test-panel-footer">
+                      <button
+                        type="button"
+                        className="month-box-test-add-btn text-[10px] text-gray-600 underline"
+                        onClick={() => {
+                          setAddingTest(true);
+                          setNewTestGrade(defaultGrade);
+                          setNewTestCramSchool(defaultCramSchool);
+                        }}
+                      >
+                        ＋新規テスト
+                      </button>
+                    </div>
                   ) : null}
                 </div>
               )}
