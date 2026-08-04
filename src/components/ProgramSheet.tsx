@@ -17,12 +17,11 @@ import {
   topSlotForMonthIndex,
 } from "@/lib/program-box-layout";
 import { EXAM_DR_CAMPUS_NAMES, GRADES, CRAM_SCHOOL_NAMES } from "@/lib/constants";
+import { JapaneseDatePicker } from "@/components/JapaneseDatePicker";
 import {
-  nativeInputToTestDate,
   normalizeDateInput,
   sanitizeTestDateInput,
   testDateInputAllowedForYearMonth,
-  testDateToNativeInput,
 } from "@/lib/test-schedule-utils";
 import jukenDoctorLogo from "../../public/juken-doctor-logo.png";
 
@@ -589,12 +588,27 @@ function MonthBox({
     if (!testsEditOpen) return;
 
     const handlePointerDown = (event: MouseEvent) => {
-      if (testEditRef.current?.contains(event.target as Node)) return;
+      const target = event.target;
+      if (target instanceof Node && testEditRef.current?.contains(target)) {
+        return;
+      }
+      if (
+        target instanceof Element &&
+        target.closest('[aria-label="日付カレンダー"]')
+      ) {
+        return;
+      }
       closeTestsEdit();
     };
 
-    document.addEventListener("mousedown", handlePointerDown);
-    return () => document.removeEventListener("mousedown", handlePointerDown);
+    // 開いたクリックが外側判定に乗らないよう次フレームから監視
+    const timer = window.setTimeout(() => {
+      document.addEventListener("mousedown", handlePointerDown);
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("mousedown", handlePointerDown);
+    };
   }, [testsEditOpen, defaultGrade, defaultCramSchool]);
 
   const closeResultPanel = () => {
@@ -828,57 +842,64 @@ function MonthBox({
                 )}
               {testsEditOpen && (
                 <div
-                  className="month-box-test-panel"
+                  className={`month-box-test-panel${row === "bottom" ? " month-box-test-panel--up" : ""}${addingTest ? " month-box-test-panel--adding" : ""}`}
                   onMouseDown={(e) => e.stopPropagation()}
                 >
-                  <div className="month-box-test-panel-list">
-                    {month.tests.map((t) => (
-                      <label
-                        key={`selected-${t.id}`}
-                        className="month-box-test-option flex items-start gap-1.5 text-left text-[10px] leading-snug text-red-600"
-                      >
-                        <input
-                          type="checkbox"
-                          className="mt-0.5 shrink-0 scale-110"
-                          checked
-                          onChange={(e) => toggleTest(t.id, e.target.checked)}
+                  {!addingTest ? (
+                    <div className="month-box-test-panel-list">
+                      {month.tests.map((t) => (
+                        <label
+                          key={`selected-${t.id}`}
+                          className="month-box-test-option flex items-start gap-1.5 text-left text-[10px] leading-snug text-red-600"
+                        >
+                          <input
+                            type="checkbox"
+                            className="mt-0.5 shrink-0 scale-110"
+                            checked
+                            onChange={(e) =>
+                              toggleTest(t.id, e.target.checked)
+                            }
+                          />
+                          <span>{t.displayText}</span>
+                        </label>
+                      ))}
+                      {otherTests.length > 0 && month.tests.length > 0 && (
+                        <div
+                          className="my-1 border-t border-gray-200"
+                          aria-hidden
                         />
-                        <span>{t.displayText}</span>
-                      </label>
-                    ))}
-                    {otherTests.length > 0 && month.tests.length > 0 && (
-                      <div
-                        className="my-1 border-t border-gray-200"
-                        aria-hidden
-                      />
-                    )}
-                    {otherTests.map((t) => (
-                      <label
-                        key={t.id}
-                        className="month-box-test-option flex items-start gap-1.5 text-left text-[10px] leading-snug text-red-600"
-                      >
-                        <input
-                          type="checkbox"
-                          className="mt-0.5 shrink-0 scale-110"
-                          checked={false}
-                          onChange={(e) => toggleTest(t.id, e.target.checked)}
-                        />
-                        <span className="min-w-0">
-                          {t.cramSchool.trim() ? (
-                            <span className="mr-1 shrink-0 text-gray-700">
-                              {t.cramSchool.trim()}
-                            </span>
-                          ) : null}
-                          {t.displayText}
-                        </span>
-                      </label>
-                    ))}
-                    {month.tests.length === 0 &&
-                      otherTests.length === 0 &&
-                      !addingTest && (
-                      <div className="text-[10px] text-gray-500">候補なし</div>
-                    )}
-                  </div>
+                      )}
+                      {otherTests.map((t) => (
+                        <label
+                          key={t.id}
+                          className="month-box-test-option flex items-start gap-1.5 text-left text-[10px] leading-snug text-red-600"
+                        >
+                          <input
+                            type="checkbox"
+                            className="mt-0.5 shrink-0 scale-110"
+                            checked={false}
+                            onChange={(e) =>
+                              toggleTest(t.id, e.target.checked)
+                            }
+                          />
+                          <span className="min-w-0">
+                            {t.cramSchool.trim() ? (
+                              <span className="mr-1 shrink-0 text-gray-700">
+                                {t.cramSchool.trim()}
+                              </span>
+                            ) : null}
+                            {t.displayText}
+                          </span>
+                        </label>
+                      ))}
+                      {month.tests.length === 0 &&
+                        otherTests.length === 0 && (
+                          <div className="text-[10px] text-gray-500">
+                            候補なし
+                          </div>
+                        )}
+                    </div>
+                  ) : null}
                   {addingTest ? (
                     <div className="month-box-test-panel-footer month-box-test-add-form space-y-1 text-left text-gray-800">
                       <input
@@ -893,7 +914,9 @@ function MonthBox({
                         <select
                           className="month-box-test-field min-w-0 flex-1 border border-gray-300"
                           value={newTestCramSchool}
-                          onChange={(e) => setNewTestCramSchool(e.target.value)}
+                          onChange={(e) =>
+                            setNewTestCramSchool(e.target.value)
+                          }
                         >
                           <option value="">選択</option>
                           {CRAM_SCHOOL_NAMES.map((name) => (
@@ -918,13 +941,10 @@ function MonthBox({
                         </select>
                       </label>
                       <div className="flex items-center gap-1">
-                        <input
-                          type="date"
-                          className="month-box-test-field month-box-test-date min-w-0 flex-1 border border-gray-300"
-                          value={testDateToNativeInput(newTestDate)}
-                          onChange={(e) =>
-                            setNewTestDate(nativeInputToTestDate(e.target.value))
-                          }
+                        <JapaneseDatePicker
+                          value={newTestDate}
+                          defaultYearMonth={month.yearMonth}
+                          onChange={setNewTestDate}
                         />
                         <input
                           type="text"
@@ -938,7 +958,9 @@ function MonthBox({
                             )
                           }
                           onBlur={() =>
-                            setNewTestDate((value) => normalizeDateInput(value))
+                            setNewTestDate((value) =>
+                              normalizeDateInput(value),
+                            )
                           }
                         />
                       </div>
@@ -946,7 +968,11 @@ function MonthBox({
                         <button
                           type="button"
                           className="text-[10px] text-blue-700 underline disabled:opacity-50"
-                          disabled={savingTest || !newTestName.trim() || !newTestCramSchool.trim()}
+                          disabled={
+                            savingTest ||
+                            !newTestName.trim() ||
+                            !newTestCramSchool.trim()
+                          }
                           onClick={() => void submitNewTest()}
                         >
                           {savingTest ? "保存中…" : "追加"}

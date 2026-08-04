@@ -76,6 +76,8 @@ export const CRAM_SCHOOL_NAMES = [
   "ena",
   "TOMAS",
   "早稲田アカデミー(高校受験)",
+  "ONETES",
+  "その他",
 ] as const;
 
 /** 受験Dr.校舎（プログラムシート右上）の候補 */
@@ -111,4 +113,5 @@ export const TEST_SCHEDULE_CRAM_SCHOOL_ORDER = [
   "ena",
   "TOMAS",
   "早稲田アカデミー(高校受験)",
+  "ONETES",
 ] as const;

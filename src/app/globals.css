@@ -588,7 +588,7 @@ body {
   z-index: 80;
   display: flex;
   flex-direction: column;
-  max-height: min(18rem, 55vh);
+  max-height: min(14rem, 40vh);
   width: max(12rem, 100%);
   overflow: hidden;
   border: 1px solid #d1d5db;
@@ -598,6 +598,13 @@ body {
   font-size: 10px;
   line-height: 1.35;
   pointer-events: auto;
+}
+
+/* 下段は上方向に開き、画面外へ落ちないようにする */
+.month-box-test-panel--up {
+  top: auto;
+  bottom: calc(100% + 1px);
+  max-height: min(16rem, 48vh);
 }
 
 .month-box-test-panel-list {
@@ -616,6 +623,22 @@ body {
   background: white;
 }
 
+.month-box-test-panel--adding {
+  max-height: none;
+  overflow: visible;
+}
+
+.month-box-test-panel--up.month-box-test-panel--adding {
+  max-height: min(20rem, 70vh);
+  overflow: auto;
+}
+
+.month-box-test-panel--adding .month-box-test-panel-footer {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
 .month-box-test-field {
   border-radius: 2px;
   background: white;
@@ -627,6 +650,8 @@ body {
 
 .month-box-test-date {
   color-scheme: light;
+  position: relative;
+  z-index: 2;
 }
 
 .month-box-test-date-text {
