@@ -30,7 +30,7 @@ export function AppHeaderShell({
   const showTests = showTestScheduleLink || showAdminLinks;
 
   return (
-    <header className="border-b bg-[#1e3a5f] px-6 py-3 text-white">
+    <header className="sticky top-0 z-50 border-b bg-[#1e3a5f] px-6 py-3 text-white">
       <div className="mx-auto flex max-w-6xl items-center justify-between">
         <div>
           <h1 className="text-lg font-bold">{title}</h1>

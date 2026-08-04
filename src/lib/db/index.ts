@@ -160,6 +160,16 @@ function ensureSchema(sqlite: Database.Database) {
     `);
   }
 
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS student_month_test_dismissals (
+      id TEXT PRIMARY KEY,
+      student_id TEXT NOT NULL REFERENCES students(id),
+      year_month TEXT NOT NULL,
+      test_schedule_id TEXT NOT NULL REFERENCES test_schedules(id),
+      UNIQUE(student_id, year_month, test_schedule_id)
+    );
+  `);
+
   sqlite.exec(`CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT)`);
 
   sqlite.exec(`
@@ -393,6 +403,13 @@ function createDb() {
       test_schedule_id TEXT NOT NULL REFERENCES test_schedules(id)
     );
     CREATE TABLE IF NOT EXISTS student_month_tests (
+      id TEXT PRIMARY KEY,
+      student_id TEXT NOT NULL REFERENCES students(id),
+      year_month TEXT NOT NULL,
+      test_schedule_id TEXT NOT NULL REFERENCES test_schedules(id),
+      UNIQUE(student_id, year_month, test_schedule_id)
+    );
+    CREATE TABLE IF NOT EXISTS student_month_test_dismissals (
       id TEXT PRIMARY KEY,
       student_id TEXT NOT NULL REFERENCES students(id),
       year_month TEXT NOT NULL,

@@ -167,6 +167,10 @@ function deleteStudentDependencies(db: StudentDb, studentId: string) {
     .where(eq(schema.studentMonthTests.studentId, studentId))
     .run();
 
+  db.delete(schema.studentMonthTestDismissals)
+    .where(eq(schema.studentMonthTestDismissals.studentId, studentId))
+    .run();
+
   db.delete(schema.studentTestResults)
     .where(eq(schema.studentTestResults.studentId, studentId))
     .run();

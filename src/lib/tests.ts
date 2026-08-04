@@ -113,6 +113,9 @@ export function deleteTestSchedule(id: string) {
   db.delete(schema.studentMonthTests)
     .where(eq(schema.studentMonthTests.testScheduleId, id))
     .run();
+  db.delete(schema.studentMonthTestDismissals)
+    .where(eq(schema.studentMonthTestDismissals.testScheduleId, id))
+    .run();
   db.delete(schema.programMonthTests)
     .where(eq(schema.programMonthTests.testScheduleId, id))
     .run();
@@ -137,6 +140,9 @@ export function bulkSaveTestSchedules(
         .run();
       tx.delete(schema.studentMonthTests)
         .where(eq(schema.studentMonthTests.testScheduleId, id))
+        .run();
+      tx.delete(schema.studentMonthTestDismissals)
+        .where(eq(schema.studentMonthTestDismissals.testScheduleId, id))
         .run();
       tx.delete(schema.programMonthTests)
         .where(eq(schema.programMonthTests.testScheduleId, id))

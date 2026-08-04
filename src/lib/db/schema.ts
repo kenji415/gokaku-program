@@ -107,6 +107,22 @@ export const studentMonthTests = sqliteTable(
   (t) => [unique().on(t.studentId, t.yearMonth, t.testScheduleId)],
 );
 
+/** テスト編集で外したテスト。テストコース自動追加の対象外にする */
+export const studentMonthTestDismissals = sqliteTable(
+  "student_month_test_dismissals",
+  {
+    id: text("id").primaryKey(),
+    studentId: text("student_id")
+      .notNull()
+      .references(() => students.id),
+    yearMonth: text("year_month").notNull(),
+    testScheduleId: text("test_schedule_id")
+      .notNull()
+      .references(() => testSchedules.id),
+  },
+  (t) => [unique().on(t.studentId, t.yearMonth, t.testScheduleId)],
+);
+
 export const studentTestResults = sqliteTable(
   "student_test_results",
   {

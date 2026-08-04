@@ -476,7 +476,11 @@ export function getAllTestsForYearMonths(
   return result;
 }
 
-/** プログラムシートの月ごとテスト候補（当該学年・全日程・全塾。月は開催日の年月で判定） */
+/**
+ * プログラムシートのテスト編集候補。
+ * 学年・開催日の年月が一致し、日付に日がある模試をすべて返す（塾名・テストコースは問わない）。
+ * テストコースは空月への自動追加（getTestsForMonth）専用。
+ */
 export function getProgramTestCandidatesForMonths(
   grade: string,
   yearMonths: string[],
@@ -518,7 +522,10 @@ export function getTestsForMonth(
   );
 }
 
-/** プログラムシートのテスト編集候補（テストコース登録分＋当該生徒が既に選択中の分） */
+/**
+ * 未使用。テストコース＋模試パターンで絞る旧候補ロジック。
+ * 現行のテスト編集候補は getProgramTestCandidatesForMonths（学年・月一致の全模試）。
+ */
 export function getSelectableTestsForMonth(
   grade: string,
   yearMonth: string,
@@ -693,54 +700,120 @@ function getStudentMonthTestIds(
     .map((row) => row.testScheduleId);
 }
 
-function setStudentMonthTests(
+function getDismissedMonthTestIds(
+  studentId: string,
+  yearMonth: string,
+): Set<string> {
+  const db = getDb();
+  return new Set(
+    db
+      .select({
+        testScheduleId: schema.studentMonthTestDismissals.testScheduleId,
+      })
+      .from(schema.studentMonthTestDismissals)
+      .where(
+        and(
+          eq(schema.studentMonthTestDismissals.studentId, studentId),
+          eq(schema.studentMonthTestDismissals.yearMonth, yearMonth),
+        ),
+      )
+      .all()
+      .map((row) => row.testScheduleId),
+  );
+}
+
+function recordMonthTestDismissals(
   studentId: string,
   yearMonth: string,
   testIds: string[],
+  db: ReturnType<typeof getDb> = getDb(),
 ) {
+  if (testIds.length === 0) return;
+  const existing = new Set(
+    db
+      .select({
+        testScheduleId: schema.studentMonthTestDismissals.testScheduleId,
+      })
+      .from(schema.studentMonthTestDismissals)
+      .where(
+        and(
+          eq(schema.studentMonthTestDismissals.studentId, studentId),
+          eq(schema.studentMonthTestDismissals.yearMonth, yearMonth),
+        ),
+      )
+      .all()
+      .map((row) => row.testScheduleId),
+  );
+  for (const testId of testIds) {
+    if (existing.has(testId)) continue;
+    db.insert(schema.studentMonthTestDismissals)
+      .values({
+        id: uuid(),
+        studentId,
+        yearMonth,
+        testScheduleId: testId,
+      })
+      .run();
+  }
+}
+
+function clearMonthTestDismissals(
+  studentId: string,
+  yearMonth: string,
+  testIds: string[],
+  db: ReturnType<typeof getDb> = getDb(),
+) {
+  if (testIds.length === 0) return;
+  db.delete(schema.studentMonthTestDismissals)
+    .where(
+      and(
+        eq(schema.studentMonthTestDismissals.studentId, studentId),
+        eq(schema.studentMonthTestDismissals.yearMonth, yearMonth),
+        inArray(schema.studentMonthTestDismissals.testScheduleId, testIds),
+      ),
+    )
+    .run();
+}
+
+/**
+ * テストコース対象を月にマージ追加する。
+ * 既にテストがあっても追加する。テスト編集で外したもの（dismissal）は復活させない。
+ */
+function mergeCourseTestsForMonth(
+  studentId: string,
+  yearMonth: string,
+  courseTestIds: string[],
+) {
+  if (courseTestIds.length === 0) return;
+
+  const current = new Set(getStudentMonthTestIds(studentId, yearMonth));
+  const dismissed = getDismissedMonthTestIds(studentId, yearMonth);
+  const toAdd = [...new Set(courseTestIds)].filter(
+    (id) => !current.has(id) && !dismissed.has(id),
+  );
+  if (toAdd.length === 0) return;
+
   const db = getDb();
   const student = db
     .select({ grade: schema.students.grade })
     .from(schema.students)
     .where(eq(schema.students.id, studentId))
     .get();
-  const uniqueIds = filterTestIdsForYearMonth(
-    [...new Set(testIds)],
+  const filtered = filterTestIdsForYearMonth(
+    toAdd,
     yearMonth,
     student?.grade,
   );
-
-  db.transaction((tx) => {
-    tx.delete(schema.studentMonthTests)
-      .where(
-        and(
-          eq(schema.studentMonthTests.studentId, studentId),
-          eq(schema.studentMonthTests.yearMonth, yearMonth),
-        ),
-      )
+  for (const testId of filtered) {
+    db.insert(schema.studentMonthTests)
+      .values({
+        id: uuid(),
+        studentId,
+        yearMonth,
+        testScheduleId: testId,
+      })
       .run();
-
-    for (const testId of uniqueIds) {
-      tx.insert(schema.studentMonthTests)
-        .values({
-          id: uuid(),
-          studentId,
-          yearMonth,
-          testScheduleId: testId,
-        })
-        .run();
-    }
-  });
-}
-
-function seedStudentMonthTestsIfEmpty(
-  studentId: string,
-  yearMonth: string,
-  testIds: string[],
-) {
-  if (getStudentMonthTestIds(studentId, yearMonth).length > 0) return;
-  if (testIds.length === 0) return;
-  setStudentMonthTests(studentId, yearMonth, testIds);
+  }
 }
 
 /** 現在の学年と一致しないテスト紐づけを削除する（学年変更後の6年テスト残りなど） */
@@ -780,7 +853,7 @@ function removeStudentMonthTestsWithWrongGrade(
 }
 
 /**
- * 生徒の全プログラムシートについて、学年不一致テストを外し、空月は現学年のデフォルトで埋め直す。
+ * 生徒の全プログラムシートについて、学年不一致テストを外し、テストコース対象をマージ追加する。
  * 基本情報の学年変更後に呼ぶ。
  */
 export function syncStudentMonthTestsToCurrentGrade(studentId: string) {
@@ -867,7 +940,7 @@ function ensureProgramMonthsForSheet(
         })
         .where(eq(schema.programMonths.id, current.id))
         .run();
-      seedStudentMonthTestsIfEmpty(
+      mergeCourseTestsForMonth(
         studentId,
         slot.yearMonth,
         defaultTests.get(slot.yearMonth) ?? [],
@@ -888,7 +961,7 @@ function ensureProgramMonthsForSheet(
       })
       .run();
 
-    seedStudentMonthTestsIfEmpty(
+    mergeCourseTestsForMonth(
       studentId,
       slot.yearMonth,
       defaultTests.get(slot.yearMonth) ?? [],
@@ -1201,6 +1274,27 @@ export function saveProgramSheet(
         student?.grade,
       );
       const uniqueIds = [...new Set(filteredTestIds)];
+      const previousIds = getStudentMonthTestIds(
+        sheet.studentId,
+        monthRow.yearMonth,
+      );
+      const previousSet = new Set(previousIds);
+      const nextSet = new Set(uniqueIds);
+      const removedIds = previousIds.filter((id) => !nextSet.has(id));
+      const addedIds = uniqueIds.filter((id) => !previousSet.has(id));
+
+      recordMonthTestDismissals(
+        sheet.studentId,
+        monthRow.yearMonth,
+        removedIds,
+        tx,
+      );
+      clearMonthTestDismissals(
+        sheet.studentId,
+        monthRow.yearMonth,
+        addedIds,
+        tx,
+      );
 
       tx.delete(schema.studentMonthTests)
         .where(
