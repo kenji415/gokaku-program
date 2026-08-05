@@ -8,7 +8,7 @@ import {
 } from "@/lib/course-proposal-types";
 import { formatGradeDisplay } from "@/lib/constants";
 import { formatStudentDisplayName } from "@/lib/months";
-import jukenDoctorLogo from "../../public/juken-doctor-logo.png";
+import { JukenDoctorFooterLogo } from "@/components/JukenDoctorFooterLogo";
 
 type Props = {
   sheet: CourseProposalSheetData;
@@ -152,12 +152,10 @@ export function CourseProposalSheet({
         </div>
 
         <div className="course-proposal-footer">
-          <img
-            src={jukenDoctorLogo.src}
-            alt="Juken Doctor"
-            width={jukenDoctorLogo.width}
-            height={jukenDoctorLogo.height}
+          <JukenDoctorFooterLogo
+            grade={sheet.student.grade}
             className="course-proposal-footer-logo"
+            alt="Juken Doctor"
           />
         </div>
       </div>

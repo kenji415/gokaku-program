@@ -24,7 +24,7 @@ import {
 import { formatStudentDisplayName } from "@/lib/months";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { v4 as uuid } from "uuid";
-import jukenDoctorLogo from "../../public/juken-doctor-logo.png";
+import { JukenDoctorFooterLogo } from "@/components/JukenDoctorFooterLogo";
 
 type Props = {
   sheet: FinalStretchSheetData;
@@ -561,14 +561,9 @@ export function FinalStretchSheet({
                   作成日 {sheetDate}
                 </span>
               ) : null}
-              <img
-                src={jukenDoctorLogo.src}
-                alt="受験ドクター"
-                width={jukenDoctorLogo.width}
-                height={jukenDoctorLogo.height}
+              <JukenDoctorFooterLogo
+                grade={sheet.student.grade}
                 className="final-stretch-sheet-footer-logo"
-                decoding="sync"
-                loading="eager"
               />
             </div>
           </footer>

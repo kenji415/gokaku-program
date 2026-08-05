@@ -18,12 +18,12 @@ import {
 } from "@/lib/program-box-layout";
 import { EXAM_DR_CAMPUS_NAMES, GRADES, CRAM_SCHOOL_NAMES } from "@/lib/constants";
 import { JapaneseDatePicker } from "@/components/JapaneseDatePicker";
+import { JukenDoctorFooterLogo } from "@/components/JukenDoctorFooterLogo";
 import {
   normalizeDateInput,
   sanitizeTestDateInput,
   testDateInputAllowedForYearMonth,
 } from "@/lib/test-schedule-utils";
-import jukenDoctorLogo from "../../public/juken-doctor-logo.png";
 
 type ProgramSheetProps = {
   studentName: string;
@@ -1396,14 +1396,9 @@ export function ProgramSheet({
             })}
           </div>
         )}
-        <img
-          src={jukenDoctorLogo.src}
-          alt="受験ドクター"
-          width={jukenDoctorLogo.width}
-          height={jukenDoctorLogo.height}
+        <JukenDoctorFooterLogo
+          grade={grade}
           className="program-sheet-footer-logo"
-          decoding="sync"
-          loading="eager"
         />
       </div>
     </div>

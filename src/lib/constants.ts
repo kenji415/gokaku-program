@@ -43,6 +43,14 @@ export function formatGradeDisplay(grade: string): string {
   return trimmed;
 }
 
+/** 中学・高校（中1〜高3）か。フッターロゴ切り替えなどに使う */
+export function isSecondarySchoolGrade(grade: string): boolean {
+  const trimmed = grade.trim();
+  if (!trimmed) return false;
+  if (trimmed.startsWith("中学") || trimmed.startsWith("高校")) return true;
+  return /^(中|高)[1-3]/.test(trimmed);
+}
+
 export function compareByGradeThenName(
   a: { grade: string; name: string },
   b: { grade: string; name: string },
