@@ -1,4 +1,4 @@
-import { eq, like } from "drizzle-orm";
+import { eq, like, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { v4 as uuid } from "uuid";
 import { getDb } from "./db";
@@ -18,6 +18,7 @@ export type MemberRecord = {
   password: string;
   memberRole: MemberRole;
   assignedCampus: string;
+  registeredOrder: number;
 };
 
 export type MemberInput = {
@@ -37,7 +38,10 @@ function resolveMemberRole(
   return accessRole === "admin" ? "管理者" : "社員";
 }
 
-function rowToMember(row: typeof schema.users.$inferSelect): MemberRecord {
+function rowToMember(
+  row: typeof schema.users.$inferSelect,
+  registeredOrder = 0,
+): MemberRecord {
   return {
     id: row.id,
     name: row.name,
@@ -45,17 +49,34 @@ function rowToMember(row: typeof schema.users.$inferSelect): MemberRecord {
     password: row.password,
     memberRole: resolveMemberRole(row.memberRole, row.role),
     assignedCampus: row.assignedCampus?.trim() ?? "",
+    registeredOrder,
   };
+}
+
+function registeredOrderForUserId(id: string): number {
+  const db = getDb();
+  const row = db
+    .select({ registeredOrder: sql<number>`rowid`.mapWith(Number) })
+    .from(schema.users)
+    .where(eq(schema.users.id, id))
+    .get();
+  return row?.registeredOrder ?? 0;
 }
 
 export function listMembers(): MemberRecord[] {
   const db = getDb();
-  return db
-    .select()
+  const rows = db
+    .select({
+      user: schema.users,
+      registeredOrder: sql<number>`rowid`.mapWith(Number),
+    })
     .from(schema.users)
-    .all()
-    .map(rowToMember)
-    .sort((a, b) => a.name.localeCompare(b.name, "ja"));
+    .orderBy(sql`rowid`)
+    .all();
+
+  return rows.map(({ user, registeredOrder }) =>
+    rowToMember(user, registeredOrder),
+  );
 }
 
 export function upsertMember(input: MemberInput): MemberRecord {
@@ -105,6 +126,7 @@ export function upsertMember(input: MemberInput): MemberRecord {
 
     return rowToMember(
       db.select().from(schema.users).where(eq(schema.users.id, input.id)).get()!,
+      registeredOrderForUserId(input.id),
     );
   }
 
@@ -124,6 +146,7 @@ export function upsertMember(input: MemberInput): MemberRecord {
 
   return rowToMember(
     db.select().from(schema.users).where(eq(schema.users.id, id)).get()!,
+    registeredOrderForUserId(id),
   );
 }
 
@@ -141,7 +164,10 @@ export function bulkSaveMembers(
   }
 
   for (const row of rows) {
-    if (!row.name.trim() && !row.loginId.trim()) continue;
+    const hasName = row.name.trim().length > 0;
+    const hasLoginId = row.loginId.trim().length > 0;
+    if (!hasName && !hasLoginId) continue;
+    if (!row.id && (!hasName || !hasLoginId)) continue;
     upsertMember(row);
   }
 

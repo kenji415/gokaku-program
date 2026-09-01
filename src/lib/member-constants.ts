@@ -137,3 +137,33 @@ export function resolveAssignedCampus(
   if (!supportsAssignedCampus(memberRole)) return null;
   return assignedCampus?.trim() || null;
 }
+
+const MEMBER_ROLE_SORT_ORDER: Record<MemberRole, number> = {
+  管理者: 0,
+  校長: 1,
+  社員: 2,
+  非常勤: 3,
+};
+
+export function memberRoleSortIndex(role: MemberRole | string): number {
+  if (isMemberRole(role)) return MEMBER_ROLE_SORT_ORDER[role];
+  return 99;
+}
+
+/** 管理権限（管理者→校長→社員→非常勤）の順、同一権限内は登録順 */
+export function sortMemberRowsByRole<
+  T extends { memberRole: MemberRole | string; registeredOrder?: number },
+>(rows: T[]): T[] {
+  return [...rows]
+    .map((row, index) => ({ row, index }))
+    .sort((a, b) => {
+      const roleDiff =
+        memberRoleSortIndex(a.row.memberRole) -
+        memberRoleSortIndex(b.row.memberRole);
+      if (roleDiff !== 0) return roleDiff;
+      const orderA = a.row.registeredOrder ?? a.index;
+      const orderB = b.row.registeredOrder ?? b.index;
+      return orderA - orderB;
+    })
+    .map(({ row }) => row);
+}

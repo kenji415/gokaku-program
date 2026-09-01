@@ -7,6 +7,7 @@ import {
 } from "@/lib/client-bulk-pdf-export";
 import { formatPdfExportedAt } from "@/lib/pdf-sheet-utils";
 import { isBrokenStudentName } from "@/lib/student-spreadsheet-utils";
+import { currentYearMonth } from "@/lib/months";
 
 type Assignment = {
   studentId: string;
@@ -39,7 +40,7 @@ export function BulkPdfExport({ assignments }: Props) {
     return [...subjects].sort((a, b) => a.localeCompare(b, "ja"));
   }, [assignments]);
 
-  const [startYearMonth, setStartYearMonth] = useState("2026-06");
+  const [startYearMonth, setStartYearMonth] = useState(currentYearMonth);
   const [subject, setSubject] = useState(subjectOptions[0] ?? "");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [statusByStudentId, setStatusByStudentId] = useState<

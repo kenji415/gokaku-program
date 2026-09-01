@@ -11,7 +11,7 @@ import {
   defaultCourseProposalYear,
   type CourseProposalSeason,
 } from "@/lib/course-proposal-types";
-import { formatYearMonth } from "@/lib/months";
+import { currentYearMonth } from "@/lib/months";
 import { matchesNameQuery } from "@/lib/name-search";
 import type {
   TeacherOverviewSheetKind,
@@ -31,11 +31,6 @@ const SHEET_KIND_OPTIONS: {
   { kind: "final-stretch", label: "直前期シート" },
   { kind: "course-proposal", label: "講習提案書" },
 ];
-
-function currentYearMonth(): string {
-  const now = new Date();
-  return formatYearMonth(now.getFullYear(), now.getMonth() + 1);
-}
 
 function overviewDescription(kind: TeacherOverviewSheetKind): string {
   switch (kind) {

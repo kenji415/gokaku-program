@@ -19,6 +19,12 @@ export function formatYearMonth(year: number, month: number): string {
   return `${year}-${String(month).padStart(2, "0")}`;
 }
 
+/** 現在の年月（例: 2026-09） */
+export function currentYearMonth(): string {
+  const now = new Date();
+  return formatYearMonth(now.getFullYear(), now.getMonth() + 1);
+}
+
 /** UI表示用: 2026-06 → 6月 2026年 */
 export function formatYearMonthJapanese(value: string): string {
   const { year, month } = parseYearMonth(value);

@@ -5,6 +5,7 @@ import {
   isCourseProposalSeason,
   type CourseProposalSeason,
 } from "@/lib/course-proposal-types";
+import { currentYearMonth } from "@/lib/months";
 
 export type MakerTab =
   | "program"
@@ -107,7 +108,9 @@ export function resolveMakerStateFromSearchParams(
     activeTab = "program";
   }
 
-  const startYearMonth = /^\d{4}-\d{2}$/.test(monthParam) ? monthParam : "2026-06";
+  const startYearMonth = /^\d{4}-\d{2}$/.test(monthParam)
+    ? monthParam
+    : currentYearMonth();
 
   const proposalYearRaw = searchParams.get("proposalYear")?.trim() ?? "";
   const proposalYearParam = Number(proposalYearRaw);
