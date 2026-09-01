@@ -372,8 +372,6 @@ export function getTeacherOverview(
   if (!canViewTeacherOverview(memberRole)) return [];
 
   const db = getDb();
-  const slots = buildMonthSlots(startYearMonth);
-  const yearMonths = slots.map((slot) => slot.yearMonth);
 
   const campusScope = resolveTeacherOverviewCampusScope(viewerId, memberRole);
   if (campusScope === undefined) return [];
@@ -415,6 +413,9 @@ export function getTeacherOverview(
     ) {
       continue;
     }
+
+    const slots = buildMonthSlots(startYearMonth, row.grade);
+    const yearMonths = slots.map((slot) => slot.yearMonth);
 
     const allMonthRows =
       sheet && yearMonths.length > 0

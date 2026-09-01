@@ -71,7 +71,7 @@ export async function POST(request: Request) {
     .where(eq(schema.students.id, body.studentId))
     .get();
 
-  const slots = buildMonthSlots(body.startYearMonth);
+  const slots = buildMonthSlots(body.startYearMonth, student?.grade);
   const allTestsForMonth: Record<string, ProgramMonthTestPoolItem[]> =
     student
       ? getProgramTestCandidatesForMonths(

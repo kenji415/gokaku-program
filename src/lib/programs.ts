@@ -584,7 +584,7 @@ export function getDefaultTestsForStudent(
   const result = new Map<string, string[]>();
   if (!student?.mockExamPattern) return result;
 
-  const slots = buildMonthSlots(startYearMonth);
+  const slots = buildMonthSlots(startYearMonth, student.grade);
   for (const slot of slots) {
     const tests = getTestsForMonth(
       student.grade,
@@ -916,7 +916,7 @@ function ensureProgramMonthsForSheet(
     .get();
   const studentGrade = student?.grade?.trim() ?? "";
 
-  const slots = buildMonthSlots(startYearMonth);
+  const slots = buildMonthSlots(startYearMonth, studentGrade);
   const yearMonths = slots.map((slot) => slot.yearMonth);
   if (studentGrade) {
     removeStudentMonthTestsWithWrongGrade(studentId, studentGrade, yearMonths);
@@ -972,9 +972,10 @@ function ensureProgramMonthsForSheet(
 function loadVisibleMonths(
   sheetId: string,
   startYearMonth: string,
+  grade: string,
 ): ProgramMonthRow[] {
   const db = getDb();
-  const slots = buildMonthSlots(startYearMonth);
+  const slots = buildMonthSlots(startYearMonth, grade);
   const yearMonths = slots.map((slot) => slot.yearMonth);
   const stored = db
     .select()
@@ -1087,7 +1088,11 @@ export function getProgramSheet(sheetId: string): ProgramSheetData | null {
   if (!student || !teacher) return null;
 
   ensureProgramMonthsForSheet(sheet.id, sheet.startYearMonth, sheet.studentId);
-  const months = loadVisibleMonths(sheet.id, sheet.startYearMonth);
+  const months = loadVisibleMonths(
+    sheet.id,
+    sheet.startYearMonth,
+    student.grade,
+  );
   const monthsData = buildMonthsData(months, sheet.studentId, student.grade);
   const { campus, usesDefaultCampus } = resolveSheetCampus(
     sheet.campus,
@@ -1382,15 +1387,16 @@ export function getBulkPdfStudentStatuses(
   subject: string,
 ): BulkPdfStudentStatus[] {
   const db = getDb();
-  const slots = buildMonthSlots(startYearMonth);
-  const yearMonths = slots.map((slot) => slot.yearMonth);
-  const allLabels = slots.map((slot) => slot.monthLabel);
 
   const assignments = getTeacherAssignments(teacherId).filter(
     (assignment) => assignment.subject === subject,
   );
 
   return assignments.map((assignment) => {
+    const slots = buildMonthSlots(startYearMonth, assignment.grade);
+    const yearMonths = slots.map((slot) => slot.yearMonth);
+    const allLabels = slots.map((slot) => slot.monthLabel);
+
     const sheet = consolidateProgramSheets(
       assignment.studentId,
       subject,

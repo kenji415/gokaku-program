@@ -40,7 +40,53 @@ export function shiftYearMonth(value: string, delta: number): string {
   return formatYearMonth(y, m);
 }
 
-export function buildMonthSlots(startYearMonth: string): MonthSlot[] {
+/** 6年生が9〜1月を開始月に選んだとき、8月〜翌1月の6ヶ月に固定する */
+const SIXTH_GRADE_LATE_START_MONTHS = new Set([1, 9, 10, 11, 12]);
+
+export function usesSixthGradeAugToJanWindow(
+  grade: string,
+  startYearMonth: string,
+): boolean {
+  if (grade.trim() !== "6年") return false;
+  const { month } = parseYearMonth(startYearMonth);
+  return SIXTH_GRADE_LATE_START_MONTHS.has(month);
+}
+
+function buildSixthGradeAugToJanSlots(startYearMonth: string): MonthSlot[] {
+  const { year, month } = parseYearMonth(startYearMonth);
+  const janYear = month === 1 ? year : year + 1;
+  const augYear = janYear - 1;
+  const slots: MonthSlot[] = [];
+
+  for (let i = 0; i < 6; i++) {
+    let y = augYear;
+    let m = 8 + i;
+    if (m > 12) {
+      m -= 12;
+      y += 1;
+    }
+
+    const monthLabel = m === 8 ? "夏期講習" : `${m}月`;
+
+    slots.push({
+      index: i,
+      yearMonth: formatYearMonth(y, m),
+      monthLabel,
+      timelineLabel: `${y}.${String(m).padStart(2, "0")}`,
+    });
+  }
+
+  return slots;
+}
+
+export function buildMonthSlots(
+  startYearMonth: string,
+  grade?: string | null,
+): MonthSlot[] {
+  if (grade && usesSixthGradeAugToJanWindow(grade, startYearMonth)) {
+    return buildSixthGradeAugToJanSlots(startYearMonth);
+  }
+
   const { year, month } = parseYearMonth(startYearMonth);
   const slots: MonthSlot[] = [];
 
