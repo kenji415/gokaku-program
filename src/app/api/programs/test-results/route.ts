@@ -7,6 +7,7 @@ import {
   teacherCanAccessStudent,
   type StudentTestResultInput,
 } from "@/lib/test-results";
+import { resolveStudentClassName } from "@/lib/student-class-name";
 import { getDb } from "@/lib/db";
 import * as schema from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
@@ -58,9 +59,18 @@ export async function PUT(request: Request) {
 
   saveStudentTestResult(body.studentId, body.testScheduleId, body.result);
 
+  const studentAfter = db
+    .select()
+    .from(schema.students)
+    .where(eq(schema.students.id, body.studentId))
+    .get();
+
   return NextResponse.json({
     ok: true,
     result: body.result,
     recentTestResults: getRecentStudentTestResults(body.studentId),
+    className: studentAfter
+      ? resolveStudentClassName(studentAfter)
+      : "",
   });
 }

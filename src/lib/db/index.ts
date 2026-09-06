@@ -322,6 +322,127 @@ function ensureSchema(sqlite: Database.Database) {
   invalidateTestScheduleCache();
 }
 
+/** 指導開始時の塾・校舎・クラスを現状の基本情報で1回だけシートに固定する */
+function snapshotProgramSheetStartClassNames(sqlite: Database.Database) {
+  const flag = sqlite
+    .prepare(
+      `SELECT value FROM app_meta WHERE key = 'program_sheet_start_class_v1'`,
+    )
+    .get() as { value: string } | undefined;
+  if (flag) return;
+
+  // DB初期化中は getDb() を呼べないため、students の値を直接コピーする
+  sqlite.exec(`
+    UPDATE program_sheets
+    SET
+      class_name = COALESCE(
+        (
+          SELECT TRIM(students.class_name)
+          FROM students
+          WHERE students.id = program_sheets.student_id
+        ),
+        ''
+      ),
+      cram_school = COALESCE(
+        (
+          SELECT TRIM(students.cram_school)
+          FROM students
+          WHERE students.id = program_sheets.student_id
+        ),
+        ''
+      ),
+      attendance_campus = COALESCE(
+        (
+          SELECT TRIM(students.campus)
+          FROM students
+          WHERE students.id = program_sheets.student_id
+        ),
+        ''
+      )
+    WHERE EXISTS (
+      SELECT 1 FROM students WHERE students.id = program_sheets.student_id
+    )
+  `);
+
+  sqlite
+    .prepare(
+      `INSERT INTO app_meta (key, value) VALUES ('program_sheet_start_class_v1', '1')`,
+    )
+    .run();
+}
+
+/** class_v1 済み環境向け: 塾・校舎の開始時スナップショットを現状の基本情報で固定 */
+function snapshotProgramSheetStartSchoolNames(sqlite: Database.Database) {
+  const flag = sqlite
+    .prepare(
+      `SELECT value FROM app_meta WHERE key = 'program_sheet_start_school_v1'`,
+    )
+    .get() as { value: string } | undefined;
+  if (flag) return;
+
+  // 現状の通塾表示（基本情報）を開始時欄に固定する
+  sqlite.exec(`
+    UPDATE program_sheets
+    SET
+      cram_school = COALESCE(
+        (
+          SELECT TRIM(students.cram_school)
+          FROM students
+          WHERE students.id = program_sheets.student_id
+        ),
+        ''
+      ),
+      attendance_campus = COALESCE(
+        (
+          SELECT TRIM(students.campus)
+          FROM students
+          WHERE students.id = program_sheets.student_id
+        ),
+        ''
+      )
+    WHERE EXISTS (
+      SELECT 1 FROM students WHERE students.id = program_sheets.student_id
+    )
+  `);
+
+  sqlite
+    .prepare(
+      `INSERT INTO app_meta (key, value) VALUES ('program_sheet_start_school_v1', '1')`,
+    )
+    .run();
+}
+
+/** 指導開始時の志望校を現状の基本情報で1回だけシートに固定する */
+function snapshotProgramSheetStartTargetSchool(sqlite: Database.Database) {
+  const flag = sqlite
+    .prepare(
+      `SELECT value FROM app_meta WHERE key = 'program_sheet_start_target_v1'`,
+    )
+    .get() as { value: string } | undefined;
+  if (flag) return;
+
+  sqlite.exec(`
+    UPDATE program_sheets
+    SET target_school = COALESCE(
+      (
+        SELECT TRIM(students.target_school)
+        FROM students
+        WHERE students.id = program_sheets.student_id
+      ),
+      ''
+    )
+    WHERE EXISTS (
+      SELECT 1 FROM students WHERE students.id = program_sheets.student_id
+    )
+  `);
+
+  sqlite
+    .prepare(
+      `INSERT INTO app_meta (key, value) VALUES ('program_sheet_start_target_v1', '1')`,
+    )
+    .run();
+}
+
 function createDb() {
   const dbPath = resolveDatabasePath();
   const sqlite = new Database(dbPath);
@@ -438,6 +559,9 @@ function createDb() {
   seedMembersIfNeeded(sqlite, db);
 
   seedDatabase(db);
+  snapshotProgramSheetStartClassNames(sqlite);
+  snapshotProgramSheetStartSchoolNames(sqlite);
+  snapshotProgramSheetStartTargetSchool(sqlite);
 
   return { drizzle: db, sqlite };
 }

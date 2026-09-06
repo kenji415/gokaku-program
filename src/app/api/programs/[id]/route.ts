@@ -55,6 +55,10 @@ export async function PUT(
     goal: string;
     initialMockExams: string;
     initialChallenges: string;
+    startCramSchool?: string;
+    startAttendanceCampus?: string;
+    startClassName?: string;
+    startTargetSchool?: string;
     contentFontSize?: number;
     months: {
       id: string;
@@ -74,6 +78,11 @@ export async function PUT(
     goal: body.goal ?? existing.goal,
     initialMockExams: body.initialMockExams ?? existing.initialMockExams,
     initialChallenges: body.initialChallenges ?? existing.initialChallenges,
+    startCramSchool: body.startCramSchool ?? existing.startCramSchool,
+    startAttendanceCampus:
+      body.startAttendanceCampus ?? existing.startAttendanceCampus,
+    startClassName: body.startClassName ?? existing.startClassName,
+    startTargetSchool: body.startTargetSchool ?? existing.startTargetSchool,
     contentFontSize: body.contentFontSize ?? existing.contentFontSize,
     months: body.months,
   });

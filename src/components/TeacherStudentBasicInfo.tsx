@@ -602,7 +602,9 @@ export function TeacherStudentBasicInfo({
             <label className="block min-w-0 text-sm">
               <span className="mb-1 block text-xs font-medium text-gray-800">
                 クラス
-                <span className="font-normal text-gray-500">（集団塾）</span>
+                <span className="font-normal text-gray-500">
+                  (テスト結果より自動更新)
+                </span>
               </span>
               <input
                 className={fieldClass}

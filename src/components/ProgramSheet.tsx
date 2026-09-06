@@ -35,11 +35,15 @@ type ProgramSheetProps = {
   attendanceCampus: string;
   cramSchool: string;
   studentClass: string;
+  /** テスト新規追加時の塾名初期値（未指定時は cramSchool） */
+  defaultCramSchool?: string;
   targetSchool: string;
   initialMockExams: string;
   teacherName: string;
   initialChallenges: string;
   recentTestResults: RecentTestResult[];
+  /** 基本情報の最新志望校（直近成績の下に表示） */
+  latestTargetSchool?: string;
   months: ProgramMonthData[];
   editable?: boolean;
   /** 同一生徒に対する担当科目一覧。2件以上かつ editable のとき見出しで切替可 */
@@ -49,6 +53,10 @@ type ProgramSheetProps = {
   onGoalChange?: (value: string) => void;
   onInitialMockExamsChange?: (value: string) => void;
   onInitialChallengesChange?: (value: string) => void;
+  onStartCramSchoolChange?: (value: string) => void;
+  onStartAttendanceCampusChange?: (value: string) => void;
+  onStartClassNameChange?: (value: string) => void;
+  onStartTargetSchoolChange?: (value: string) => void;
   onMonthChange?: (
     monthId: string,
     field: "monthTitle" | "content",
@@ -369,6 +377,10 @@ function StartBox({
   editable,
   onInitialMockExamsChange,
   onInitialChallengesChange,
+  onStartCramSchoolChange,
+  onStartAttendanceCampusChange,
+  onStartClassNameChange,
+  onStartTargetSchoolChange,
 }: {
   subject: string;
   cramSchool: string;
@@ -380,6 +392,10 @@ function StartBox({
   editable?: boolean;
   onInitialMockExamsChange?: (value: string) => void;
   onInitialChallengesChange?: (value: string) => void;
+  onStartCramSchoolChange?: (value: string) => void;
+  onStartAttendanceCampusChange?: (value: string) => void;
+  onStartClassNameChange?: (value: string) => void;
+  onStartTargetSchoolChange?: (value: string) => void;
 }) {
   const schoolLine = [cramSchool, attendanceCampus, studentClass]
     .filter(Boolean)
@@ -391,12 +407,52 @@ function StartBox({
         指導開始時
       </div>
       <div className="month-box-body flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-1.5 py-1 text-[10px] leading-relaxed">
-        <div className="program-sheet-content shrink-0 leading-relaxed">
-          通塾：{schoolLine || "\u00a0"}
-        </div>
-        <div className="program-sheet-content shrink-0 leading-relaxed">
-          志望校：{targetSchool || "\u00a0"}
-        </div>
+        {editable ? (
+          <div className="program-sheet-content flex shrink-0 flex-wrap items-baseline gap-x-0.5 gap-y-0.5 leading-relaxed">
+            <span className="shrink-0">通塾：</span>
+            <input
+              className="program-sheet-content min-w-[3.5rem] max-w-[40%] flex-1 border-0 bg-transparent px-0.5 leading-relaxed outline-none"
+              value={cramSchool}
+              placeholder="塾名"
+              aria-label="指導開始時の塾名"
+              onChange={(e) => onStartCramSchoolChange?.(e.target.value)}
+            />
+            <input
+              className="program-sheet-content min-w-[3.5rem] max-w-[40%] flex-1 border-0 bg-transparent px-0.5 leading-relaxed outline-none"
+              value={attendanceCampus}
+              placeholder="校舎"
+              aria-label="指導開始時の校舎"
+              onChange={(e) => onStartAttendanceCampusChange?.(e.target.value)}
+            />
+            <input
+              className="program-sheet-content min-w-[3rem] max-w-[35%] flex-1 border-0 bg-transparent px-0.5 leading-relaxed outline-none"
+              value={studentClass}
+              placeholder="クラス"
+              aria-label="指導開始時のクラス"
+              onChange={(e) => onStartClassNameChange?.(e.target.value)}
+            />
+          </div>
+        ) : (
+          <div className="program-sheet-content shrink-0 leading-relaxed">
+            通塾：{schoolLine || "\u00a0"}
+          </div>
+        )}
+        {editable ? (
+          <label className="program-sheet-content flex shrink-0 items-baseline gap-0.5 leading-relaxed">
+            <span className="shrink-0">志望校：</span>
+            <input
+              className="program-sheet-content min-w-0 flex-1 border-0 bg-transparent px-0.5 leading-relaxed outline-none"
+              value={targetSchool}
+              placeholder="開始時の志望校"
+              aria-label="指導開始時の志望校"
+              onChange={(e) => onStartTargetSchoolChange?.(e.target.value)}
+            />
+          </label>
+        ) : (
+          <div className="program-sheet-content shrink-0 leading-relaxed">
+            志望校：{targetSchool || "\u00a0"}
+          </div>
+        )}
         {editable ? (
           <label className="program-sheet-content flex min-h-0 min-w-0 shrink-0 flex-col gap-0.5 leading-relaxed">
             <span className="shrink-0">開始時成績：</span>
@@ -1058,11 +1114,13 @@ export function ProgramSheet({
   attendanceCampus,
   cramSchool,
   studentClass,
+  defaultCramSchool,
   targetSchool,
   initialMockExams,
   teacherName,
   initialChallenges,
   recentTestResults,
+  latestTargetSchool = "",
   months,
   editable,
   subjectOptions = [],
@@ -1071,6 +1129,10 @@ export function ProgramSheet({
   onGoalChange,
   onInitialMockExamsChange,
   onInitialChallengesChange,
+  onStartCramSchoolChange,
+  onStartAttendanceCampusChange,
+  onStartClassNameChange,
+  onStartTargetSchoolChange,
   onMonthChange,
   onTestsChange,
   onTestCreate,
@@ -1081,6 +1143,7 @@ export function ProgramSheet({
 }: ProgramSheetProps) {
   const monthTestPool = (yearMonth: string) =>
     allTestsForMonth[yearMonth] ?? availableTests[yearMonth] ?? [];
+  const testDefaultCramSchool = defaultCramSchool ?? cramSchool;
   const showHeaderMeta = editable || Boolean(teacherName) || Boolean(campus);
   const showSubjectSelect =
     Boolean(editable) && subjectOptions.length > 1 && Boolean(onSubjectChange);
@@ -1273,6 +1336,10 @@ export function ProgramSheet({
                   editable={editable}
                   onInitialMockExamsChange={onInitialMockExamsChange}
                   onInitialChallengesChange={onInitialChallengesChange}
+                  onStartCramSchoolChange={onStartCramSchoolChange}
+                  onStartAttendanceCampusChange={onStartAttendanceCampusChange}
+                  onStartClassNameChange={onStartClassNameChange}
+                  onStartTargetSchoolChange={onStartTargetSchoolChange}
                 />
                 <div className="month-box-connector month-box-connector--down" />
               </div>
@@ -1289,7 +1356,7 @@ export function ProgramSheet({
                   onTestResultSave={onTestResultSave}
                   tests={monthTestPool(month.yearMonth)}
                   defaultGrade={grade}
-                  defaultCramSchool={cramSchool}
+                  defaultCramSchool={testDefaultCramSchool}
                   showTestEditHint={showTestEditHint && i === 0}
                   onDismissTestEditHint={dismissTestEditHint}
                   showTestResultHint={
@@ -1359,7 +1426,7 @@ export function ProgramSheet({
                   onTestResultSave={onTestResultSave}
                   tests={monthTestPool(month.yearMonth)}
                   defaultGrade={grade}
-                  defaultCramSchool={cramSchool}
+                  defaultCramSchool={testDefaultCramSchool}
                   showTestResultHint={
                     showTestResultHint && i === firstTestMonthIndex
                   }
@@ -1373,27 +1440,41 @@ export function ProgramSheet({
       </div>
 
       <div
-        className={`program-sheet-footer flex items-start gap-2${recentTestResults.length > 0 ? " justify-between" : " justify-end"}`}
+        className={`program-sheet-footer flex items-start gap-2${recentTestResults.length > 0 || latestTargetSchool ? " justify-between" : " justify-end"}`}
       >
-        {recentTestResults.length > 0 && (
+        {(recentTestResults.length > 0 || latestTargetSchool) && (
           <div className="program-sheet-recent-results program-sheet-content">
-            <div className="program-sheet-recent-results-label text-[10px] leading-relaxed">
-              直近の成績：
-            </div>
-            {recentTestResults.map((item) => {
-              const scores = formatTestResultScores(item.result);
-              return (
-                <div
-                  key={item.testScheduleId}
-                  className="program-sheet-recent-results-line text-[9px] leading-tight"
-                >
-                  <span>{item.displayText}</span>
-                  {scores ? (
-                    <span className="ml-1 text-[8px] text-gray-700">{scores}</span>
-                  ) : null}
+            {recentTestResults.length > 0 ? (
+              <>
+                <div className="program-sheet-recent-results-label text-[10px] leading-relaxed">
+                  直近の成績：
                 </div>
-              );
-            })}
+                {recentTestResults.map((item) => {
+                  const scores = formatTestResultScores(item.result);
+                  return (
+                    <div
+                      key={item.testScheduleId}
+                      className="program-sheet-recent-results-line text-[9px] leading-tight"
+                    >
+                      <span>{item.displayText}</span>
+                      {scores ? (
+                        <span className="ml-1 text-[8px] text-gray-700">
+                          {scores}
+                        </span>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </>
+            ) : null}
+            {latestTargetSchool ? (
+              <div className="mt-0.5 text-[10px] leading-relaxed">
+                <span className="program-sheet-recent-results-label">
+                  志望校：
+                </span>
+                <span>{latestTargetSchool}</span>
+              </div>
+            ) : null}
           </div>
         )}
         <JukenDoctorFooterLogo

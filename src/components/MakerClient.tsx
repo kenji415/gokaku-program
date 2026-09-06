@@ -596,6 +596,10 @@ export function MakerClient({
         goal: current.goal,
         initialMockExams: current.initialMockExams,
         initialChallenges: current.initialChallenges,
+        startCramSchool: current.startCramSchool,
+        startAttendanceCampus: current.startAttendanceCampus,
+        startClassName: current.startClassName,
+        startTargetSchool: current.startTargetSchool,
         contentFontSize: current.contentFontSize,
         months: current.months.map((m) => ({
           id: m.id,
@@ -859,7 +863,8 @@ export function MakerClient({
       if (requestId !== loadSeqRef.current) return;
 
       if (!res.ok) {
-        setLoadError("プログラムの読み込みに失敗しました");
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        setLoadError(data.error ?? "プログラムの読み込みに失敗しました");
         if (isRefresh && sheetRef.current) {
           setStartYearMonth(sheetRef.current.startYearMonth);
         } else {
@@ -1106,6 +1111,28 @@ export function MakerClient({
     setSheet((prev) => (prev ? { ...prev, initialChallenges: value } : prev));
   };
 
+  const handleStartClassNameChange = (value: string) => {
+    bumpSave();
+    setSheet((prev) => (prev ? { ...prev, startClassName: value } : prev));
+  };
+
+  const handleStartCramSchoolChange = (value: string) => {
+    bumpSave();
+    setSheet((prev) => (prev ? { ...prev, startCramSchool: value } : prev));
+  };
+
+  const handleStartAttendanceCampusChange = (value: string) => {
+    bumpSave();
+    setSheet((prev) =>
+      prev ? { ...prev, startAttendanceCampus: value } : prev,
+    );
+  };
+
+  const handleStartTargetSchoolChange = (value: string) => {
+    bumpSave();
+    setSheet((prev) => (prev ? { ...prev, startTargetSchool: value } : prev));
+  };
+
   const handleMonthChange = (
     monthId: string,
     field: "monthTitle" | "content",
@@ -1262,6 +1289,7 @@ export function MakerClient({
     const data = (await res.json()) as {
       result: StudentTestResultInput;
       recentTestResults?: RecentTestResult[];
+      className?: string;
     };
 
     const hasValues =
@@ -1269,20 +1297,18 @@ export function MakerClient({
       result.notes.trim() !== "" ||
       result.newClass?.trim() !== "";
     const savedResult = hasValues ? result : null;
-    const savedNewClass = result.newClass?.trim() ?? "";
 
-    if (savedNewClass) {
-      setBasicInfoRefreshKey((key) => key + 1);
-    }
+    setBasicInfoRefreshKey((key) => key + 1);
 
     setSheet((prev) => {
       if (!prev) return prev;
       return {
         ...prev,
         recentTestResults: data.recentTestResults ?? prev.recentTestResults,
-        student: savedNewClass
-          ? { ...prev.student, className: savedNewClass }
-          : prev.student,
+        student:
+          typeof data.className === "string"
+            ? { ...prev.student, className: data.className }
+            : prev.student,
         months: prev.months.map((m) => ({
           ...m,
           tests: m.tests.map((t) =>
@@ -1658,14 +1684,16 @@ export function MakerClient({
             subject={subject}
             goal={sheet.goal}
             campus={sheet.campus}
-            attendanceCampus={sheet.student.campus}
-            cramSchool={sheet.student.cramSchool}
-            studentClass={sheet.student.className}
-            targetSchool={sheet.student.targetSchool}
+            attendanceCampus={sheet.startAttendanceCampus}
+            cramSchool={sheet.startCramSchool}
+            studentClass={sheet.startClassName}
+            defaultCramSchool={sheet.student.cramSchool}
+            targetSchool={sheet.startTargetSchool}
             initialMockExams={sheet.initialMockExams}
             teacherName={sheet.teacher.name}
             initialChallenges={sheet.initialChallenges}
             recentTestResults={sheet.recentTestResults ?? []}
+            latestTargetSchool={sheet.student.targetSchool}
             months={sheet.months}
             editable
             subjectOptions={subjectOptions}
@@ -1677,6 +1705,10 @@ export function MakerClient({
             onGoalChange={handleGoalChange}
             onInitialMockExamsChange={handleInitialMockExamsChange}
             onInitialChallengesChange={handleInitialChallengesChange}
+            onStartCramSchoolChange={handleStartCramSchoolChange}
+            onStartAttendanceCampusChange={handleStartAttendanceCampusChange}
+            onStartClassNameChange={handleStartClassNameChange}
+            onStartTargetSchoolChange={handleStartTargetSchoolChange}
             onMonthChange={handleMonthChange}
             onTestsChange={handleTestsChange}
             onTestCreate={handleTestCreate}

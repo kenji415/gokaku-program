@@ -17,68 +17,79 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = (await request.json()) as {
-    studentId: string;
-    subject: string;
-    teacherId: string;
-    startYearMonth: string;
-  };
+  try {
+    const body = (await request.json()) as {
+      studentId: string;
+      subject: string;
+      teacherId: string;
+      startYearMonth: string;
+    };
 
-  if (
-    session.role === "teacher" &&
-    body.teacherId !== session.id &&
-    session.memberRole !== "管理者" &&
-    session.memberRole !== "校長"
-  ) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (
+      session.role === "teacher" &&
+      body.teacherId !== session.id &&
+      session.memberRole !== "管理者" &&
+      session.memberRole !== "校長"
+    ) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const db = getDb();
+    const assignment = db
+      .select({ teacherId: schema.studentAssignments.teacherId })
+      .from(schema.studentAssignments)
+      .where(
+        and(
+          eq(schema.studentAssignments.studentId, body.studentId),
+          eq(schema.studentAssignments.subject, body.subject),
+        ),
+      )
+      .get();
+
+    const sheetTeacherId = assignment?.teacherId ?? body.teacherId;
+
+    const sheet = findOrCreateProgramSheet({
+      studentId: body.studentId,
+      subject: body.subject,
+      teacherId: sheetTeacherId,
+      startYearMonth: body.startYearMonth,
+    });
+
+    if (
+      !userCanViewProgramSheet(
+        sheet.id,
+        session.id,
+        session.memberRole,
+        session.role,
+      )
+    ) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const student = db
+      .select()
+      .from(schema.students)
+      .where(eq(schema.students.id, body.studentId))
+      .get();
+
+    const slots = buildMonthSlots(body.startYearMonth, student?.grade);
+    const allTestsForMonth: Record<string, ProgramMonthTestPoolItem[]> =
+      student
+        ? getProgramTestCandidatesForMonths(
+            student.grade,
+            slots.map((slot) => slot.yearMonth),
+          )
+        : {};
+
+    return NextResponse.json({ sheet, allTestsForMonth });
+  } catch (error) {
+    console.error("[api/programs] POST failed", error);
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error ? error.message : "プログラムの読み込みに失敗しました",
+      },
+      { status: 500 },
+    );
   }
-
-  const db = getDb();
-  const assignment = db
-    .select({ teacherId: schema.studentAssignments.teacherId })
-    .from(schema.studentAssignments)
-    .where(
-      and(
-        eq(schema.studentAssignments.studentId, body.studentId),
-        eq(schema.studentAssignments.subject, body.subject),
-      ),
-    )
-    .get();
-
-  const sheetTeacherId = assignment?.teacherId ?? body.teacherId;
-
-  const sheet = findOrCreateProgramSheet({
-    studentId: body.studentId,
-    subject: body.subject,
-    teacherId: sheetTeacherId,
-    startYearMonth: body.startYearMonth,
-  });
-
-  if (
-    !userCanViewProgramSheet(
-      sheet.id,
-      session.id,
-      session.memberRole,
-      session.role,
-    )
-  ) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  const student = db
-    .select()
-    .from(schema.students)
-    .where(eq(schema.students.id, body.studentId))
-    .get();
-
-  const slots = buildMonthSlots(body.startYearMonth, student?.grade);
-  const allTestsForMonth: Record<string, ProgramMonthTestPoolItem[]> =
-    student
-      ? getProgramTestCandidatesForMonths(
-          student.grade,
-          slots.map((slot) => slot.yearMonth),
-        )
-      : {};
-
-  return NextResponse.json({ sheet, allTestsForMonth });
 }

@@ -22,14 +22,16 @@ export function ProgramSheetPrintView({
           subject={sheet.subject}
           goal={sheet.goal}
           campus={sheet.campus}
-          attendanceCampus={sheet.student.campus}
-          cramSchool={sheet.student.cramSchool}
-          studentClass={sheet.student.className}
-          targetSchool={sheet.student.targetSchool}
+          attendanceCampus={sheet.startAttendanceCampus}
+          cramSchool={sheet.startCramSchool}
+          studentClass={sheet.startClassName}
+          defaultCramSchool={sheet.student.cramSchool}
+          targetSchool={sheet.startTargetSchool}
           initialMockExams={sheet.initialMockExams}
           teacherName={sheet.teacher.name}
           initialChallenges={sheet.initialChallenges}
           recentTestResults={sheet.recentTestResults ?? []}
+          latestTargetSchool={sheet.student.targetSchool}
           months={sheet.months}
           contentFontSize={contentFontSize}
         />

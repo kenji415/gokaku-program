@@ -61,6 +61,28 @@ function resolveSheetInitialChallenges(
   return sheetChallenges?.trim() || "";
 }
 
+/** 指導開始時フィールド: シート値を優先し、未設定(null)のときのみ基本情報を初期表示に使う */
+function resolveSheetStartField(
+  sheetValue: string | null | undefined,
+  studentValue: string,
+): string {
+  if (sheetValue !== null && sheetValue !== undefined) {
+    return sheetValue.trim();
+  }
+  return studentValue.trim();
+}
+
+/** 指導開始時クラス: シート値を優先し、未設定(null)のときのみ基本情報を初期表示に使う */
+function resolveSheetStartClassName(
+  sheetClassName: string | null | undefined,
+  student: { id: string; className: string | null; classNameLocked: number | boolean | null },
+): string {
+  if (sheetClassName !== null && sheetClassName !== undefined) {
+    return sheetClassName.trim();
+  }
+  return resolveStudentClassName(student);
+}
+
 function resolveSheetCampus(
   storedCampus: string | null | undefined,
   teacherDefaultCampus: string | null | undefined,
@@ -114,6 +136,11 @@ export type ProgramSheetData = {
   goal: string;
   initialMockExams: string;
   initialChallenges: string;
+  /** 指導開始時の塾名・校舎・クラス・志望校（シート固有・基本情報とは非同期） */
+  startCramSchool: string;
+  startAttendanceCampus: string;
+  startClassName: string;
+  startTargetSchool: string;
   recentTestResults: RecentTestResult[];
   student: {
     name: string;
@@ -1111,6 +1138,19 @@ export function getProgramSheet(sheetId: string): ProgramSheetData | null {
     goal: trimOrEmpty(sheet.goal) || "志望校合格に向けて",
     initialMockExams: trimOrEmpty(sheet.initialMockExams),
     initialChallenges: resolveSheetInitialChallenges(sheet.initialChallenges),
+    startCramSchool: resolveSheetStartField(
+      sheet.cramSchool,
+      trimOrEmpty(student.cramSchool),
+    ),
+    startAttendanceCampus: resolveSheetStartField(
+      sheet.attendanceCampus,
+      trimOrEmpty(student.campus),
+    ),
+    startClassName: resolveSheetStartClassName(sheet.className, student),
+    startTargetSchool: resolveSheetStartField(
+      sheet.targetSchool,
+      trimOrEmpty(student.targetSchool),
+    ),
     recentTestResults: getRecentStudentTestResults(sheet.studentId),
     student: {
       name: student.name,
@@ -1149,6 +1189,9 @@ export function findOrCreateProgramSheet(params: {
       .where(eq(schema.students.id, params.studentId))
       .get();
     const sheetId = uuid();
+    const startClassName = student
+      ? resolveStudentClassName(student)
+      : "";
     db.insert(schema.programSheets)
       .values({
         id: sheetId,
@@ -1158,6 +1201,10 @@ export function findOrCreateProgramSheet(params: {
         startYearMonth: params.startYearMonth,
         campus: null,
         goal: student?.goal ?? null,
+        cramSchool: trimOrEmpty(student?.cramSchool),
+        attendanceCampus: trimOrEmpty(student?.campus),
+        className: startClassName,
+        targetSchool: trimOrEmpty(student?.targetSchool),
         initialMockExams: student?.initialMockExams ?? null,
         initialChallenges: null,
         createdAt: now,
@@ -1215,6 +1262,10 @@ export function saveProgramSheet(
     goal: string;
     initialMockExams: string;
     initialChallenges: string;
+    startCramSchool?: string;
+    startAttendanceCampus?: string;
+    startClassName?: string;
+    startTargetSchool?: string;
     contentFontSize?: number;
     months: {
       id: string;
@@ -1331,6 +1382,22 @@ export function saveProgramSheet(
         goal: payload.goal.trim() || null,
         initialMockExams: payload.initialMockExams.trim() || null,
         initialChallenges: payload.initialChallenges.trim() || null,
+        cramSchool:
+          payload.startCramSchool !== undefined
+            ? payload.startCramSchool.trim()
+            : sheet.cramSchool,
+        attendanceCampus:
+          payload.startAttendanceCampus !== undefined
+            ? payload.startAttendanceCampus.trim()
+            : sheet.attendanceCampus,
+        className:
+          payload.startClassName !== undefined
+            ? payload.startClassName.trim()
+            : sheet.className,
+        targetSchool:
+          payload.startTargetSchool !== undefined
+            ? payload.startTargetSchool.trim()
+            : sheet.targetSchool,
         contentFontSize,
         updatedAt: now,
       })

@@ -9,14 +9,22 @@ type StudentClassRow = {
   classNameLocked: number | boolean | null;
 };
 
+export type LatestNewClassInfo = {
+  newClass: string;
+  testScheduleId: string;
+  sortRank: number;
+};
+
 export function isStudentClassNameLocked(
   locked: number | boolean | null | undefined,
 ): boolean {
   return locked === 1 || locked === true;
 }
 
-/** 成績の新クラス欄から、開催日が最も新しい値を返す */
-export function getLatestNewClassFromResults(studentId: string): string | null {
+/** 成績の新クラス欄から、模試日付が最も新しいものを返す（入力日ではない） */
+export function getLatestNewClassInfo(
+  studentId: string,
+): LatestNewClassInfo | null {
   const db = getDb();
   const resultRows = db
     .select()
@@ -47,6 +55,7 @@ export function getLatestNewClassFromResults(studentId: string): string | null {
       const test = testMap.get(row.testScheduleId);
       return {
         newClass: row.newClass,
+        testScheduleId: row.testScheduleId,
         sortRank: eventDateSortRank(test?.testDate, test?.yearMonth),
         updatedAt: row.updatedAt,
       };
@@ -56,7 +65,17 @@ export function getLatestNewClassFromResults(studentId: string): string | null {
       return b.updatedAt.localeCompare(a.updatedAt);
     })[0];
 
-  return latest?.newClass ?? null;
+  if (!latest) return null;
+  return {
+    newClass: latest.newClass,
+    testScheduleId: latest.testScheduleId,
+    sortRank: latest.sortRank,
+  };
+}
+
+/** 成績の新クラス欄から、開催日が最も新しい値を返す */
+export function getLatestNewClassFromResults(studentId: string): string | null {
+  return getLatestNewClassInfo(studentId)?.newClass ?? null;
 }
 
 export function resolveStudentClassName(student: StudentClassRow): string {
@@ -93,20 +112,51 @@ export function syncStudentClassNameFromResults(studentId: string): string {
   return resolved;
 }
 
-/** 成績保存時: 新クラスがあればクラス欄を更新し、手動ロックを解除 */
+/**
+ * 成績の新クラス保存時の基本情報クラス更新。
+ * - 未ロック: 模試日付が最新の新クラスを反映
+ * - 手入力ロック中: 今回の模試が（模試日付で）最新のときだけ解除して反映
+ */
 export function applyStudentClassNameFromTestResult(
   studentId: string,
   newClass: string,
-) {
-  const trimmed = newClass.trim();
-  if (!trimmed) return;
-
+  testScheduleId: string,
+): string {
   const db = getDb();
+  const student = db
+    .select()
+    .from(schema.students)
+    .where(eq(schema.students.id, studentId))
+    .get();
+  if (!student) return "";
+
+  const trimmed = newClass.trim();
+  if (!trimmed) {
+    return syncStudentClassNameFromResults(studentId);
+  }
+
+  const test = db
+    .select()
+    .from(schema.testSchedules)
+    .where(eq(schema.testSchedules.id, testScheduleId))
+    .get();
+  const thisRank = eventDateSortRank(test?.testDate, test?.yearMonth);
+  const latest = getLatestNewClassInfo(studentId);
+
+  if (isStudentClassNameLocked(student.classNameLocked)) {
+    // 手入力は、より新しい（または同日最新の）模試のクラス結果が入るまで維持
+    if (!latest || thisRank < latest.sortRank) {
+      return student.className?.trim() ?? "";
+    }
+  }
+
+  const nextClass = latest?.newClass ?? trimmed;
   db.update(schema.students)
     .set({
-      className: trimmed,
+      className: nextClass || null,
       classNameLocked: 0,
     })
     .where(eq(schema.students.id, studentId))
     .run();
+  return nextClass;
 }

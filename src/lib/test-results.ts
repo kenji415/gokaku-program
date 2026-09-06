@@ -11,6 +11,7 @@ import {
 } from "./test-result-types";
 import {
   applyStudentClassNameFromTestResult,
+  syncStudentClassNameFromResults,
 } from "./student-class-name";
 import {
   eventDateSortRank,
@@ -144,6 +145,7 @@ export function saveStudentTestResult(
       db.delete(schema.studentTestResults)
         .where(eq(schema.studentTestResults.id, existing.id))
         .run();
+      syncStudentClassNameFromResults(studentId);
     }
     return null;
   }
@@ -164,9 +166,11 @@ export function saveStudentTestResult(
       })
       .where(eq(schema.studentTestResults.id, existing.id))
       .run();
-    if (normalized.newClass) {
-      applyStudentClassNameFromTestResult(studentId, normalized.newClass);
-    }
+    applyStudentClassNameFromTestResult(
+      studentId,
+      normalized.newClass,
+      testScheduleId,
+    );
     return existing.id;
   }
 
@@ -188,9 +192,11 @@ export function saveStudentTestResult(
       updatedAt: now,
     })
     .run();
-  if (normalized.newClass) {
-    applyStudentClassNameFromTestResult(studentId, normalized.newClass);
-  }
+  applyStudentClassNameFromTestResult(
+    studentId,
+    normalized.newClass,
+    testScheduleId,
+  );
   return id;
 }
 
