@@ -29,10 +29,15 @@ function todayIsoDate(): string {
   return `${y}-${m}-${d}`;
 }
 
-function formatMemoDate(value: string): string {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
-  if (!match) return value;
-  return `${match[1]}/${Number(match[2])}/${Number(match[3])}`;
+function syncSavedMemos(
+  ref: { current: Map<string, { memoDate: string; body: string }> },
+  memos: GuidancePolicyMemo[],
+) {
+  const next = new Map<string, { memoDate: string; body: string }>();
+  for (const memo of memos) {
+    next.set(memo.id, { memoDate: memo.memoDate, body: memo.body });
+  }
+  ref.current = next;
 }
 
 function AutoGrowTextarea({
@@ -93,6 +98,9 @@ export function GuidancePolicyPanel({
   const loadSeqRef = useRef(0);
   const policyTextRef = useRef(policyText);
   const sheetIdRef = useRef<string | null>(null);
+  const savedMemosRef = useRef<
+    Map<string, { memoDate: string; body: string }>
+  >(new Map());
 
   policyTextRef.current = policyText;
   sheetIdRef.current = sheet?.id ?? null;
@@ -147,6 +155,7 @@ export function GuidancePolicyPanel({
         setSheet(data.sheet);
         setPolicyText(data.sheet.policyText);
         setMemos(data.sheet.memos);
+        syncSavedMemos(savedMemosRef, data.sheet.memos);
         setSaveRevision(0);
       } catch {
         if (cancelled || requestId !== loadSeqRef.current) return;
@@ -183,7 +192,11 @@ export function GuidancePolicyPanel({
         return;
       }
       const data = (await res.json()) as { memo: GuidancePolicyMemo };
-      setMemos((prev) => [data.memo, ...prev]);
+      setMemos((prev) => {
+        const next = [data.memo, ...prev];
+        syncSavedMemos(savedMemosRef, next);
+        return next;
+      });
       setDraftBody("");
       setDraftDate(todayIsoDate());
     } catch {
@@ -195,13 +208,74 @@ export function GuidancePolicyPanel({
 
   const handleDeleteMemo = async (memoId: string) => {
     if (!sheet) return;
-    if (!window.confirm("このメモを削除しますか？")) return;
     const res = await fetch(
       `/api/programs/guidance-policy/${sheet.id}/memos/${memoId}`,
       { method: "DELETE" },
     );
     if (!res.ok) return;
-    setMemos((prev) => prev.filter((m) => m.id !== memoId));
+    setMemos((prev) => {
+      const next = prev.filter((m) => m.id !== memoId);
+      syncSavedMemos(savedMemosRef, next);
+      return next;
+    });
+  };
+
+  const handleUpdateMemo = async (
+    memoId: string,
+    next: { memoDate: string; body: string },
+  ) => {
+    if (!sheet) return;
+    const memoDate = next.memoDate.trim();
+    const body = next.body.trim();
+    const saved = savedMemosRef.current.get(memoId);
+    if (
+      saved &&
+      saved.memoDate === memoDate &&
+      saved.body === body
+    ) {
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(memoDate) || !body) {
+      if (saved) {
+        setMemos((prev) =>
+          prev.map((m) =>
+            m.id === memoId
+              ? { ...m, memoDate: saved.memoDate, body: saved.body }
+              : m,
+          ),
+        );
+      }
+      return;
+    }
+
+    const res = await fetch(
+      `/api/programs/guidance-policy/${sheet.id}/memos/${memoId}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ memoDate, body }),
+      },
+    );
+    if (!res.ok) {
+      if (saved) {
+        setMemos((prev) =>
+          prev.map((m) =>
+            m.id === memoId
+              ? { ...m, memoDate: saved.memoDate, body: saved.body }
+              : m,
+          ),
+        );
+      }
+      return;
+    }
+    const data = (await res.json()) as { memo: GuidancePolicyMemo };
+    setMemos((prev) => {
+      const nextMemos = prev.map((m) =>
+        m.id === data.memo.id ? data.memo : m,
+      );
+      syncSavedMemos(savedMemosRef, nextMemos);
+      return nextMemos;
+    });
   };
 
   if (loading) {
@@ -295,23 +369,61 @@ export function GuidancePolicyPanel({
               {memos.map((memo) => (
                 <li
                   key={memo.id}
-                  className="rounded border border-gray-200 bg-white px-3 py-2"
+                  className="flex items-center gap-2 rounded border border-gray-200 bg-white px-3 py-2"
                 >
-                  <div className="mb-1 flex items-center justify-between gap-2">
-                    <span className="text-xs font-medium tabular-nums text-[#1e3a5f]">
-                      {formatMemoDate(memo.memoDate)}
-                    </span>
-                    <button
-                      type="button"
-                      className="text-xs text-gray-400 hover:text-red-600"
-                      onClick={() => void handleDeleteMemo(memo.id)}
-                    >
-                      削除
-                    </button>
-                  </div>
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-900">
-                    {memo.body}
-                  </p>
+                  <input
+                    type="date"
+                    lang="ja"
+                    aria-label="メモ日付"
+                    className="shrink-0 rounded border border-gray-300 px-2 py-1 text-xs tabular-nums text-[#1e3a5f]"
+                    value={memo.memoDate}
+                    onChange={(e) => {
+                      const memoDate = e.target.value;
+                      setMemos((prev) =>
+                        prev.map((m) =>
+                          m.id === memo.id ? { ...m, memoDate } : m,
+                        ),
+                      );
+                    }}
+                    onBlur={(e) => {
+                      void handleUpdateMemo(memo.id, {
+                        memoDate: e.target.value,
+                        body: memo.body,
+                      });
+                    }}
+                  />
+                  <input
+                    type="text"
+                    aria-label="メモ内容"
+                    className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-1 text-sm text-gray-900 outline-none hover:border-gray-300 focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f]"
+                    value={memo.body}
+                    onChange={(e) => {
+                      const body = e.target.value;
+                      setMemos((prev) =>
+                        prev.map((m) =>
+                          m.id === memo.id ? { ...m, body } : m,
+                        ),
+                      );
+                    }}
+                    onBlur={(e) => {
+                      void handleUpdateMemo(memo.id, {
+                        memoDate: memo.memoDate,
+                        body: e.target.value,
+                      });
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        (e.target as HTMLInputElement).blur();
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="shrink-0 text-xs text-gray-400 hover:text-red-600"
+                    onClick={() => void handleDeleteMemo(memo.id)}
+                  >
+                    削除
+                  </button>
                 </li>
               ))}
             </ul>

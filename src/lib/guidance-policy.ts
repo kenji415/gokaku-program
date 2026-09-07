@@ -223,6 +223,47 @@ export function addGuidancePolicyMemo(params: {
   return { id, memoDate, body, createdAt: now };
 }
 
+export function updateGuidancePolicyMemo(params: {
+  sheetId: string;
+  memoId: string;
+  memoDate: string;
+  body: string;
+}): GuidancePolicyMemo | null {
+  const memoDate = params.memoDate.trim();
+  const body = params.body.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(memoDate) || !body) return null;
+
+  const db = getDb();
+  const existing = db
+    .select()
+    .from(schema.guidancePolicyMemos)
+    .where(
+      and(
+        eq(schema.guidancePolicyMemos.id, params.memoId),
+        eq(schema.guidancePolicyMemos.sheetId, params.sheetId),
+      ),
+    )
+    .get();
+  if (!existing) return null;
+
+  const now = new Date().toISOString();
+  db.update(schema.guidancePolicyMemos)
+    .set({ memoDate, body })
+    .where(eq(schema.guidancePolicyMemos.id, params.memoId))
+    .run();
+  db.update(schema.guidancePolicySheets)
+    .set({ updatedAt: now })
+    .where(eq(schema.guidancePolicySheets.id, params.sheetId))
+    .run();
+
+  return {
+    id: existing.id,
+    memoDate,
+    body,
+    createdAt: existing.createdAt,
+  };
+}
+
 export function deleteGuidancePolicyMemo(
   sheetId: string,
   memoId: string,
