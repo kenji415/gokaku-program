@@ -453,20 +453,8 @@ function matchesMakerStudentSearch(
   student: MakerStudentListItem,
   query: string,
 ): boolean {
-  if (studentNameMatchesQuery(student.name, query)) return true;
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-  const haystack = [
-    student.grade,
-    student.cramSchool,
-    student.campus,
-    student.className,
-    student.targetSchool,
-    student.mySubjects.join(" "),
-  ]
-    .join(" ")
-    .toLowerCase();
-  return haystack.includes(q);
+  // 生徒一覧の検索は氏名のみ（塾・志望校などはヒットさせない）
+  return studentNameMatchesQuery(student.name, query);
 }
 
 export function getAllTestsForMonth(yearMonth: string) {
@@ -512,9 +500,10 @@ export function getProgramTestCandidatesForMonths(
   grade: string,
   yearMonths: string[],
 ): Record<string, ProgramMonthTestPoolItem[]> {
+  const gradeTrim = grade.trim();
   const rows = getCachedTestSchedules().filter(
     (row) =>
-      row.grade === grade &&
+      (row.grade?.trim() ?? "") === gradeTrim &&
       hasFullTestScheduleDay(row.testDate),
   );
   const result: Record<string, ProgramMonthTestPoolItem[]> = {};
@@ -537,13 +526,14 @@ export function getTestsForMonth(
   yearMonth: string,
   cramSchool?: string | null,
 ) {
+  const gradeTrim = grade.trim();
   const pattern = cramSchool?.trim();
   return sortTestScheduleRows(
     getCachedTestSchedules().filter((row) => {
-      if (row.grade !== grade) return false;
+      if ((row.grade?.trim() ?? "") !== gradeTrim) return false;
       if (!hasTestScheduleDate(row.testDate)) return false;
       if (!row.inTestCourse) return false;
-      if (pattern && row.cramSchool !== pattern) return false;
+      if (pattern && (row.cramSchool?.trim() ?? "") !== pattern) return false;
       return testBelongsToYearMonth(row, yearMonth);
     }),
   );
@@ -560,7 +550,9 @@ export function getSelectableTestsForMonth(
   studentId?: string | null,
 ) {
   const db = getDb();
-  const rows = getCachedTestSchedules().filter((row) => row.grade === grade);
+  const rows = getCachedTestSchedules().filter(
+    (row) => (row.grade?.trim() ?? "") === grade.trim(),
+  );
 
   const studentLinkedIds = new Set<string>();
   if (studentId) {
@@ -609,12 +601,15 @@ export function getDefaultTestsForStudent(
     .get();
 
   const result = new Map<string, string[]>();
-  if (!student?.mockExamPattern) return result;
+  if (!student?.mockExamPattern?.trim()) return result;
 
-  const slots = buildMonthSlots(startYearMonth, student.grade);
+  const studentGrade = student.grade?.trim() ?? "";
+  if (!studentGrade) return result;
+
+  const slots = buildMonthSlots(startYearMonth, studentGrade);
   for (const slot of slots) {
     const tests = getTestsForMonth(
-      student.grade,
+      studentGrade,
       slot.yearMonth,
       student.mockExamPattern,
     );
@@ -869,9 +864,10 @@ function removeStudentMonthTestsWithWrongGrade(
   if (links.length === 0) return;
 
   const byId = new Map(getCachedTestSchedules().map((row) => [row.id, row]));
+  const gradeTrim = grade.trim();
   for (const link of links) {
     const test = byId.get(link.testScheduleId);
-    if (!test || test.grade !== grade) {
+    if (!test || (test.grade?.trim() ?? "") !== gradeTrim) {
       db.delete(schema.studentMonthTests)
         .where(eq(schema.studentMonthTests.id, link.id))
         .run();
@@ -914,9 +910,10 @@ export function syncStudentMonthTestsToCurrentGrade(studentId: string) {
       .all();
     if (links.length === 0) return;
     const byId = new Map(getCachedTestSchedules().map((row) => [row.id, row]));
+    const gradeTrim = student.grade.trim();
     for (const link of links) {
       const test = byId.get(link.testScheduleId);
-      if (!test || test.grade !== student.grade) {
+      if (!test || (test.grade?.trim() ?? "") !== gradeTrim) {
         db.delete(schema.studentMonthTests)
           .where(eq(schema.studentMonthTests.id, link.id))
           .run();
@@ -1082,7 +1079,7 @@ function buildMonthsData(
           if (!test) return false;
           if (!testBelongsToYearMonth(test, m.yearMonth)) return false;
           // 基本情報の学年とテスト学年が違うものは表示しない
-          if (grade && test.grade !== grade) return false;
+          if (grade && (test.grade?.trim() ?? "") !== grade) return false;
           return true;
         }),
     ).map(({ id, displayText, result }) => ({ id, displayText, result })),
@@ -1248,7 +1245,7 @@ function filterTestIdsForYearMonth(
       const row = byId.get(id);
       if (!row) return false;
       if (!testBelongsToYearMonth(row, yearMonth)) return false;
-      if (gradeTrim && row.grade !== gradeTrim) return false;
+      if (gradeTrim && (row.grade?.trim() ?? "") !== gradeTrim) return false;
       return true;
     }),
   );

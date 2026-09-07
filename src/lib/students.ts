@@ -12,6 +12,7 @@ import {
   normalizeStudentName,
   studentNamesMatch,
 } from "./student-name";
+import { syncStudentMonthTestsToCurrentGrade } from "./programs";
 
 export type StudentInput = {
   name: string;
@@ -111,16 +112,27 @@ export function updateStudent(
 ) {
   const db = getDb();
   const name = normalizeStudentName(input.name);
+  const before = db
+    .select({
+      grade: schema.students.grade,
+      mockExamPattern: schema.students.mockExamPattern,
+    })
+    .from(schema.students)
+    .where(eq(schema.students.id, studentId))
+    .get();
+
+  const nextGrade = input.grade.trim();
+  const nextPattern = input.mockExamPattern?.trim() || null;
 
   db.update(schema.students)
     .set({
       name,
       gender: input.gender ?? null,
-      grade: input.grade,
+      grade: nextGrade,
       cramSchool: input.cramSchool ?? null,
       campus: input.campus ?? null,
       className: input.className ?? null,
-      mockExamPattern: input.mockExamPattern ?? null,
+      mockExamPattern: nextPattern,
       targetSchool: input.targetSchool ?? null,
       initialMockExams: input.initialMockExams ?? null,
       initialChallenges: input.initialChallenges ?? null,
@@ -131,6 +143,14 @@ export function updateStudent(
     .run();
 
   syncAssignments(studentId, assignments);
+
+  const gradeChanged =
+    (before?.grade?.trim() ?? "") !== nextGrade;
+  const patternChanged =
+    (before?.mockExamPattern?.trim() ?? "") !== (nextPattern ?? "");
+  if (gradeChanged || patternChanged) {
+    syncStudentMonthTestsToCurrentGrade(studentId);
+  }
 }
 
 type StudentDb = Pick<ReturnType<typeof getDb>, "select" | "delete">;
@@ -302,6 +322,7 @@ export function bulkSaveStudents(
     (r) => !isStudentRowEmpty(r) && !r.name.includes("\t") && !r.name.includes("\n"),
   );
   const saved: StudentSpreadsheetRow[] = [];
+  const syncStudentIds = new Set<string>();
 
   const db = getDb();
   db.transaction((tx) => {
@@ -329,6 +350,15 @@ export function bulkSaveStudents(
         .map(([subject, teacherId]) => ({ subject, teacherId }));
 
       if (row.id) {
+        const before = tx
+          .select({
+            grade: schema.students.grade,
+            mockExamPattern: schema.students.mockExamPattern,
+          })
+          .from(schema.students)
+          .where(eq(schema.students.id, row.id))
+          .get();
+
         tx.update(schema.students)
           .set({
             name: input.name,
@@ -358,6 +388,15 @@ export function bulkSaveStudents(
               subject: a.subject,
             })
             .run();
+        }
+
+        const gradeChanged =
+          (before?.grade?.trim() ?? "") !== input.grade;
+        const patternChanged =
+          (before?.mockExamPattern?.trim() ?? "") !==
+          (input.mockExamPattern ?? "");
+        if (gradeChanged || patternChanged) {
+          syncStudentIds.add(row.id);
         }
 
         saved.push({ ...row, ...input, id: row.id, teachers: row.teachers });
@@ -395,6 +434,10 @@ export function bulkSaveStudents(
       }
     }
   });
+
+  for (const studentId of syncStudentIds) {
+    syncStudentMonthTestsToCurrentGrade(studentId);
+  }
 
   return saved;
 }

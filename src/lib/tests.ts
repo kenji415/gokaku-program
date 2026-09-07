@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import { getDb } from "./db";
 import * as schema from "./db/schema";
@@ -25,19 +25,49 @@ type DbTx = ReturnType<typeof getDb>;
 function pruneMisplacedStudentMonthTests(
   tx: DbTx,
   testScheduleId: string,
-  test: { testDate: string | null; yearMonth: string },
+  test: { testDate: string | null; yearMonth: string; grade: string },
 ) {
   const links = tx
     .select({
       id: schema.studentMonthTests.id,
+      studentId: schema.studentMonthTests.studentId,
       yearMonth: schema.studentMonthTests.yearMonth,
     })
     .from(schema.studentMonthTests)
     .where(eq(schema.studentMonthTests.testScheduleId, testScheduleId))
     .all();
 
+  if (links.length === 0) return;
+
+  const studentIds = [...new Set(links.map((link) => link.studentId))];
+  const students =
+    studentIds.length === 0
+      ? []
+      : tx
+          .select({
+            id: schema.students.id,
+            grade: schema.students.grade,
+          })
+          .from(schema.students)
+          .where(
+            studentIds.length === 1
+              ? eq(schema.students.id, studentIds[0])
+              : inArray(schema.students.id, studentIds),
+          )
+          .all();
+  const gradeByStudent = new Map(
+    students.map((row) => [row.id, row.grade?.trim() ?? ""]),
+  );
+  const testGrade = test.grade.trim();
+
   for (const link of links) {
-    if (!testBelongsToYearMonth(test, link.yearMonth)) {
+    const wrongMonth = !testBelongsToYearMonth(test, link.yearMonth);
+    const studentGrade = gradeByStudent.get(link.studentId) ?? "";
+    const wrongGrade =
+      Boolean(studentGrade) &&
+      Boolean(testGrade) &&
+      studentGrade !== testGrade;
+    if (wrongMonth || wrongGrade) {
       tx.delete(schema.studentMonthTests)
         .where(eq(schema.studentMonthTests.id, link.id))
         .run();
@@ -71,8 +101,8 @@ export function createTestSchedule(input: TestScheduleInput) {
   db.insert(schema.testSchedules)
     .values({
       id,
-      cramSchool: input.cramSchool ?? null,
-      grade: input.grade,
+      cramSchool: input.cramSchool?.trim() || null,
+      grade: input.grade.trim(),
       testName: input.testName,
       testDate: input.testDate ?? null,
       displayText: input.displayText,
@@ -86,10 +116,11 @@ export function createTestSchedule(input: TestScheduleInput) {
 
 export function updateTestSchedule(id: string, input: TestScheduleInput) {
   const db = getDb();
+  const grade = input.grade.trim();
   db.update(schema.testSchedules)
     .set({
-      cramSchool: input.cramSchool ?? null,
-      grade: input.grade,
+      cramSchool: input.cramSchool?.trim() || null,
+      grade,
       testName: input.testName,
       testDate: input.testDate ?? null,
       displayText: input.displayText,
@@ -101,6 +132,7 @@ export function updateTestSchedule(id: string, input: TestScheduleInput) {
   pruneMisplacedStudentMonthTests(db, id, {
     testDate: input.testDate ?? null,
     yearMonth: input.yearMonth,
+    grade,
   });
   invalidateTestScheduleCache();
 }
@@ -180,6 +212,7 @@ export function bulkSaveTestSchedules(
         pruneMisplacedStudentMonthTests(tx, row.id, {
           testDate: data.testDate,
           yearMonth: data.yearMonth,
+          grade: data.grade,
         });
 
         if (wasInCourse && !nowInCourse) {

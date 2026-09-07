@@ -25,7 +25,7 @@ import type {
 } from "@/lib/programs";
 import type { RecentTestResult, StudentTestResultHistoryItem } from "@/lib/test-results";
 import { hasScoreResult, EMPTY_TEST_RESULT } from "@/lib/test-result-types";
-import { compareByGradeThenName, gradeSortRank } from "@/lib/constants";
+import { compareByGradeThenName, gradeSortRank, pickPreferredMakerSubject, sortSubjectsByMakerPriority } from "@/lib/constants";
 import { NEW_STUDENT_ID } from "@/lib/student-constants";
 import type { StudentBasicInfo } from "@/lib/student-basic-info-types";
 import {
@@ -480,18 +480,28 @@ export function MakerClient({
 
   const subjectOptions = useMemo(() => {
     if (isNewStudent) return [];
-    const unique = [
+    const unique = sortSubjectsByMakerPriority([
       ...new Set(
         assignments
           .filter((a) => a.studentId === studentId)
           .map((a) => a.subject),
       ),
-    ];
-    if (subject && !unique.includes(subject)) {
-      return [...unique, subject];
-    }
+    ]);
+    // 担当外（講師別一覧など）で割当が無いときだけ、URL/現在科目を表示用に残す
+    if (unique.length === 0 && subject) return [subject];
     return unique;
   }, [assignments, studentId, isNewStudent, subject]);
+
+  const resolveSubjectForStudent = useCallback(
+    (nextStudentId: string, preferredSubject?: string) =>
+      pickPreferredMakerSubject(
+        assignments
+          .filter((a) => a.studentId === nextStudentId)
+          .map((a) => a.subject),
+        preferredSubject,
+      ),
+    [assignments],
+  );
 
   const registerStudentOption = useCallback(
     (summary: { id: string; name: string; grade: string }) => {
@@ -557,10 +567,16 @@ export function MakerClient({
     });
     setSheet(null);
     const remaining = assignments.filter((a) => a.studentId !== removedId);
-    const nextAssignment = remaining[0];
-    setStudentId(nextAssignment?.studentId ?? "");
-    setSubject(nextAssignment?.subject ?? "");
-    setActiveTab(nextAssignment ? "program" : "list");
+    const nextStudentId = remaining[0]?.studentId ?? "";
+    setStudentId(nextStudentId);
+    setSubject(
+      pickPreferredMakerSubject(
+        remaining
+          .filter((a) => a.studentId === nextStudentId)
+          .map((a) => a.subject),
+      ),
+    );
+    setActiveTab(nextStudentId ? "program" : "list");
     router.refresh();
   }, [assignments, router, studentId]);
 
@@ -573,10 +589,16 @@ export function MakerClient({
     });
     setSheet(null);
     const remaining = assignments.filter((a) => a.studentId !== removedId);
-    const nextAssignment = remaining[0];
-    setStudentId(nextAssignment?.studentId ?? "");
-    setSubject(nextAssignment?.subject ?? "");
-    setActiveTab(nextAssignment ? "program" : "list");
+    const nextStudentId = remaining[0]?.studentId ?? "";
+    setStudentId(nextStudentId);
+    setSubject(
+      pickPreferredMakerSubject(
+        remaining
+          .filter((a) => a.studentId === nextStudentId)
+          .map((a) => a.subject),
+      ),
+    );
+    setActiveTab(nextStudentId ? "program" : "list");
     router.refresh();
   }, [assignments, router, studentId]);
 
@@ -951,9 +973,9 @@ export function MakerClient({
   }, [studentOptions, studentId, canViewTeacherOverview, urlStudentParam]);
 
   useEffect(() => {
-    if (subjectOptions.length > 0 && !subjectOptions.includes(subject)) {
-      setSubject(subjectOptions[0]);
-    }
+    if (subjectOptions.length === 0) return;
+    if (subjectOptions.includes(subject)) return;
+    setSubject(pickPreferredMakerSubject(subjectOptions));
   }, [subjectOptions, subject]);
 
   useEffect(() => {
@@ -992,12 +1014,19 @@ export function MakerClient({
     const idx = ids.indexOf(studentId);
     if (idx === -1) {
       const next = delta > 0 ? ids[0] : ids[ids.length - 1];
-      void switchWithSave(() => setStudentId(next));
+      void switchWithSave(() => {
+        setStudentId(next);
+        setSubject(resolveSubjectForStudent(next, subject));
+      });
       return;
     }
 
     const nextIdx = (idx + delta + ids.length) % ids.length;
-    void switchWithSave(() => setStudentId(ids[nextIdx]));
+    const next = ids[nextIdx];
+    void switchWithSave(() => {
+      setStudentId(next);
+      setSubject(resolveSubjectForStudent(next, subject));
+    });
   };
 
   const switchTab = async (nextTab: MakerTab) => {
@@ -1022,7 +1051,9 @@ export function MakerClient({
     });
     void switchWithSave(() => {
       setStudentId(student.id);
-      if (options.subject) setSubject(options.subject);
+      setSubject(
+        options.subject ?? resolveSubjectForStudent(student.id, subject),
+      );
       setActiveTab(options.tab);
     });
   };
@@ -1043,9 +1074,7 @@ export function MakerClient({
       .filter((row) => row.teacherId)
       .map((row) => row.subject);
     if (assignedSubjects.length > 0) {
-      setSubject((prev) =>
-        assignedSubjects.includes(prev) ? prev : assignedSubjects[0],
-      );
+      setSubject((prev) => pickPreferredMakerSubject(assignedSubjects, prev));
     }
 
     setSheet((prev) => {
@@ -1658,6 +1687,7 @@ export function MakerClient({
           <TeacherStudentList
             selectedStudentId={studentId}
             extraStudents={extraStudents}
+            assignments={assignments}
             onSelectStudent={handleListSelect}
             onCreateNew={handleListCreateNew}
           />
@@ -1965,7 +1995,10 @@ export function MakerClient({
                   value={studentId}
                   onChange={(e) => {
                     const next = e.target.value;
-                    void switchWithSave(() => setStudentId(next));
+                    void switchWithSave(() => {
+                      setStudentId(next);
+                      setSubject(resolveSubjectForStudent(next, subject));
+                    });
                   }}
                 >
                   {studentOptions.map((s) => (

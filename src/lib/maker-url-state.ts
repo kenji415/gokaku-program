@@ -1,4 +1,5 @@
 import { NEW_STUDENT_ID } from "@/lib/student-constants";
+import { pickPreferredMakerSubject } from "@/lib/constants";
 import {
   defaultCourseProposalSeason,
   defaultCourseProposalYear,
@@ -6,6 +7,15 @@ import {
   type CourseProposalSeason,
 } from "@/lib/course-proposal-types";
 import { currentYearMonth } from "@/lib/months";
+
+function subjectsForStudent(
+  assignments: AssignmentRef[],
+  studentId: string,
+): string[] {
+  return assignments
+    .filter((a) => a.studentId === studentId)
+    .map((a) => a.subject);
+}
 
 export type MakerTab =
   | "program"
@@ -50,7 +60,9 @@ export function resolveMakerStateFromSearchParams(
   courseProposalSeason: CourseProposalSeason;
 } {
   const defaultStudentId = assignments[0]?.studentId ?? "";
-  const defaultSubject = assignments[0]?.subject ?? "";
+  const defaultSubject = pickPreferredMakerSubject(
+    subjectsForStudent(assignments, defaultStudentId),
+  );
   const defaultTab: MakerTab = assignments[0]
     ? "program"
     : canViewTeacherOverview
@@ -73,22 +85,21 @@ export function resolveMakerStateFromSearchParams(
     if (subjectParam) {
       subject = subjectParam;
     } else {
-      const anyForStudent = assignments.find(
-        (a) => a.studentId === studentParam,
+      subject = pickPreferredMakerSubject(
+        subjectsForStudent(assignments, studentParam),
       );
-      if (anyForStudent) subject = anyForStudent.subject;
     }
   } else if (studentParam) {
     const withSubject = assignments.find(
       (a) => a.studentId === studentParam && a.subject === subjectParam,
     );
-    const anyForStudent = assignments.find((a) => a.studentId === studentParam);
+    const studentSubjects = subjectsForStudent(assignments, studentParam);
     if (withSubject) {
       studentId = studentParam;
       subject = withSubject.subject;
-    } else if (anyForStudent) {
+    } else if (studentSubjects.length > 0) {
       studentId = studentParam;
-      subject = anyForStudent.subject;
+      subject = pickPreferredMakerSubject(studentSubjects);
     }
   }
 

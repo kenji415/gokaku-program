@@ -4,15 +4,23 @@ import { useEffect, useMemo, useState } from "react";
 import type { MakerStudentListItem } from "@/lib/programs";
 import { formatGraduationYear } from "@/lib/graduation";
 import { SUBJECTS } from "@/lib/constants";
+import { studentNameMatchesQuery } from "@/lib/student-name";
 
 type SelectOptions = {
   tab: "basic" | "program";
   subject?: string;
 };
 
+type AssignmentRef = {
+  studentId: string;
+  subject: string;
+};
+
 type Props = {
   selectedStudentId: string;
   extraStudents: Map<string, { name: string; grade: string }>;
+  /** 自分の担当割当。extraStudents の担当科目表示に使う */
+  assignments?: AssignmentRef[];
   onSelectStudent: (
     student: MakerStudentListItem,
     options: SelectOptions,
@@ -23,6 +31,7 @@ type Props = {
 export function TeacherStudentList({
   selectedStudentId,
   extraStudents,
+  assignments = [],
   onSelectStudent,
   onCreateNew,
 }: Props) {
@@ -111,23 +120,35 @@ export function TeacherStudentList({
     };
   }, [query, includeGraduated]);
 
+  const subjectsByStudentId = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const a of assignments) {
+      const list = map.get(a.studentId) ?? [];
+      if (!list.includes(a.subject)) list.push(a.subject);
+      map.set(a.studentId, list);
+    }
+    return map;
+  }, [assignments]);
+
   const mergedStudents = useMemo(() => {
     const byId = new Map(students.map((s) => [s.id, s]));
+    const q = query.trim();
     for (const [id, { name, grade }] of extraStudents) {
-      if (!byId.has(id)) {
-        byId.set(id, {
-          id,
-          name,
-          grade,
-          gender: null,
-          cramSchool: "",
-          campus: "",
-          className: "",
-          targetSchool: "",
-          mySubjects: [],
-          graduatedAt: null,
-        });
-      }
+      if (byId.has(id)) continue;
+      // 検索中は氏名一致の生徒だけ足す（直前に開いた担当生徒が無関係に混ざるのを防ぐ）
+      if (q && !studentNameMatchesQuery(name, q)) continue;
+      byId.set(id, {
+        id,
+        name,
+        grade,
+        gender: null,
+        cramSchool: "",
+        campus: "",
+        className: "",
+        targetSchool: "",
+        mySubjects: subjectsByStudentId.get(id) ?? [],
+        graduatedAt: null,
+      });
     }
     const active = [...byId.values()]
       .filter((s) => !s.graduatedAt)
@@ -141,7 +162,7 @@ export function TeacherStudentList({
         return a.name.localeCompare(b.name, "ja");
       });
     return [...active, ...archived];
-  }, [students, extraStudents]);
+  }, [students, extraStudents, query, subjectsByStudentId]);
 
   return (
     <div className="mx-auto max-w-6xl px-2">

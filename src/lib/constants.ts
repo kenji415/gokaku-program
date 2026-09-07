@@ -6,6 +6,52 @@ export function isFixedSubject(subject: string): boolean {
   return (SUBJECTS as readonly string[]).includes(subject.trim());
 }
 
+/**
+ * メーカー科目セレクトの優先順（複数担当時の初期表示・並び）。
+ * 国語 → 算数 → 理科 → 社会 → その他（固定科目 → 五十音）
+ */
+export const MAKER_SUBJECT_PRIORITY = [
+  "国語",
+  "算数",
+  "理科",
+  "社会",
+] as const;
+
+function makerSubjectRank(subject: string): number {
+  const trimmed = subject.trim();
+  const priorityIdx = (MAKER_SUBJECT_PRIORITY as readonly string[]).indexOf(
+    trimmed,
+  );
+  if (priorityIdx >= 0) return priorityIdx;
+  const fixedIdx = (SUBJECTS as readonly string[]).indexOf(trimmed);
+  if (fixedIdx >= 0) return MAKER_SUBJECT_PRIORITY.length + fixedIdx;
+  return MAKER_SUBJECT_PRIORITY.length + SUBJECTS.length;
+}
+
+export function compareMakerSubjects(a: string, b: string): number {
+  const rankCmp = makerSubjectRank(a) - makerSubjectRank(b);
+  if (rankCmp !== 0) return rankCmp;
+  return a.localeCompare(b, "ja");
+}
+
+export function sortSubjectsByMakerPriority(subjects: string[]): string[] {
+  return [...subjects].sort(compareMakerSubjects);
+}
+
+/** preferred が候補にあればそれを、なければ優先順先頭を返す */
+export function pickPreferredMakerSubject(
+  subjects: string[],
+  preferred?: string | null,
+): string {
+  const sorted = sortSubjectsByMakerPriority([
+    ...new Set(subjects.map((s) => s.trim()).filter(Boolean)),
+  ]);
+  if (sorted.length === 0) return preferred?.trim() || "";
+  const pref = preferred?.trim() ?? "";
+  if (pref && sorted.includes(pref)) return pref;
+  return sorted[0];
+}
+
 export const GRADES = [
   "6年",
   "5年",
