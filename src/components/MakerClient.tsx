@@ -1964,7 +1964,7 @@ export function MakerClient({
         activeTab !== "bulk-course-proposal-pdf" &&
         activeTab !== "by-teacher" ? (
         <div className="flex w-full flex-wrap items-end gap-4">
-          <label className="text-sm">
+          <div className="text-sm">
             生徒
             <span className="ml-2 inline-flex items-center gap-2">
               <span className="flex items-center gap-1 text-xs text-gray-700">
@@ -1974,7 +1974,9 @@ export function MakerClient({
                   checked={includeGraduated}
                   onChange={(e) => setIncludeGraduated(e.target.checked)}
                 />
-                <span className="select-none">卒塾生含む</span>
+                <span className="select-none" aria-hidden="true">
+                  卒塾生含む
+                </span>
               </span>
               <button
                 type="button"
@@ -2018,7 +2020,7 @@ export function MakerClient({
                 ▶
               </button>
             </span>
-          </label>
+          </div>
 
           <label className="text-sm">
             科目

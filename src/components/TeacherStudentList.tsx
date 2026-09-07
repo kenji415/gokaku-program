@@ -171,7 +171,7 @@ export function TeacherStudentList({
           <div>
             <h2 className="text-lg font-semibold text-gray-900">生徒一覧</h2>
             <p className="mt-1 text-xs text-gray-500">
-              氏名をクリックで基本情報、担当科目をクリックでプログラムシートを開きます。検索で担当外の生徒も氏名一致なら表示されます（姓名の間のスペースは不要）。担当外の生徒は科目を選んで「担当に加わる」で自分の担当に追加できます。
+              拡大の場合⇒JDB一致で検索し、「担当に加わる」で追加できます。新規生の場合⇒新規登録より基本情報を入力してください。検索した状態で新規登録をクリックすると、検索中の名前で新規登録されます。
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
