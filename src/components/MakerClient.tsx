@@ -14,6 +14,7 @@ import { TeacherStudentBasicInfo } from "@/components/TeacherStudentBasicInfo";
 import { TeacherStudentList } from "@/components/TeacherStudentList";
 import { ScoreHistoryPanel } from "@/components/ScoreHistoryPanel";
 import { CourseProposalSheet } from "@/components/CourseProposalSheet";
+import { GuidancePolicyPanel } from "@/components/GuidancePolicyPanel";
 import { useAutoSave } from "@/hooks/use-auto-save";
 import { buildPdfFilename, buildFinalStretchPdfFilename, buildCourseProposalPdfFilename, formatYearMonthJapanese, shiftYearMonth } from "@/lib/months";
 import { savePdfFromResponse } from "@/lib/client-pdf-download";
@@ -175,6 +176,7 @@ export function MakerClient({
   const finalStretchSheetRef = useRef<FinalStretchSheetData | null>(null);
   const courseProposalSheetRef = useRef<CourseProposalSheetData | null>(null);
   const basicSaveFlushRef = useRef<(() => Promise<boolean>) | null>(null);
+  const guidancePolicyFlushRef = useRef<(() => Promise<boolean>) | null>(null);
   const loadSeqRef = useRef(0);
   const finalStretchLoadSeqRef = useRef(0);
   const scoreHistoryLoadSeqRef = useRef(0);
@@ -993,6 +995,9 @@ export function MakerClient({
     if (activeTab === "course-proposal") return flushCourseProposalSave();
     if (activeTab === "basic") {
       return (await basicSaveFlushRef.current?.()) ?? true;
+    }
+    if (activeTab === "guidance-policy") {
+      return (await guidancePolicyFlushRef.current?.()) ?? true;
     }
     return true;
   }, [activeTab, flushSave, flushFinalStretchAll, flushCourseProposalSave]);
@@ -1871,6 +1876,24 @@ export function MakerClient({
           ) : (
             <div className="p-8 text-center text-gray-500">読み込み中…</div>
           )
+        ) : studentId && activeTab === "guidance-policy" ? (
+          isNewStudent ? (
+            <div className="p-8 text-center text-sm text-gray-500">
+              生徒を登録してから指導方針メモを作成できます
+            </div>
+          ) : !subject ? (
+            <div className="p-8 text-center text-sm text-gray-500">
+              科目を選択してください
+            </div>
+          ) : (
+            <GuidancePolicyPanel
+              key={`${studentId}:${subject}`}
+              studentId={studentId}
+              subject={subject}
+              teacherId={teacherId}
+              saveFlushRef={guidancePolicyFlushRef}
+            />
+          )
         ) : null}
       </main>
 
@@ -1958,6 +1981,17 @@ export function MakerClient({
           >
             成績推移
           </button>
+          <button
+            type="button"
+            className={`rounded px-4 py-2 text-sm ${
+              activeTab === "guidance-policy"
+                ? "bg-[#1e3a5f] text-white"
+                : "border bg-white text-gray-700 hover:bg-gray-50"
+            }`}
+            onClick={() => void switchTab("guidance-policy")}
+          >
+            指導方針メモ
+          </button>
         </div>
         {activeTab !== "bulk-pdf" &&
         activeTab !== "bulk-final-stretch-pdf" &&
@@ -2024,7 +2058,9 @@ export function MakerClient({
 
           <label className="text-sm">
             科目
-            {activeTab === "program" || activeTab === "final-stretch" ? (
+            {activeTab === "program" ||
+            activeTab === "final-stretch" ||
+            activeTab === "guidance-policy" ? (
               <select
                 className="ml-2 rounded border px-2 py-1"
                 value={subject}
@@ -2144,6 +2180,8 @@ export function MakerClient({
               <div>通塾・志望校・開始時成績・目標は全科目で共有されます</div>
             ) : activeTab === "score-history" ? (
               <div>チェックした模試の偏差値を左のグラフに表示します（古い順→新しい順）</div>
+            ) : activeTab === "guidance-policy" ? (
+              <div>科目ごとに指導方針と日付メモを残せます（自動保存）</div>
             ) : activeTab === "program" && sheet ? (
               <div className="flex flex-wrap items-center gap-2">
                 <span>対策文字サイズ</span>

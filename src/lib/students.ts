@@ -195,6 +195,20 @@ function deleteStudentDependencies(db: StudentDb, studentId: string) {
     .where(eq(schema.studentTestResults.studentId, studentId))
     .run();
 
+  const guidanceSheets = db
+    .select({ id: schema.guidancePolicySheets.id })
+    .from(schema.guidancePolicySheets)
+    .where(eq(schema.guidancePolicySheets.studentId, studentId))
+    .all();
+  for (const sheet of guidanceSheets) {
+    db.delete(schema.guidancePolicyMemos)
+      .where(eq(schema.guidancePolicyMemos.sheetId, sheet.id))
+      .run();
+    db.delete(schema.guidancePolicySheets)
+      .where(eq(schema.guidancePolicySheets.id, sheet.id))
+      .run();
+  }
+
   db.delete(schema.studentAssignments)
     .where(eq(schema.studentAssignments.studentId, studentId))
     .run();

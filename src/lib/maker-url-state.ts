@@ -23,6 +23,7 @@ export type MakerTab =
   | "basic"
   | "score-history"
   | "course-proposal"
+  | "guidance-policy"
   | "list"
   | "bulk-pdf"
   | "bulk-final-stretch-pdf"
@@ -35,6 +36,7 @@ const VALID_TABS = new Set<MakerTab>([
   "basic",
   "score-history",
   "course-proposal",
+  "guidance-policy",
   "list",
   "bulk-pdf",
   "bulk-final-stretch-pdf",

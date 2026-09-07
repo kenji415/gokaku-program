@@ -212,3 +212,33 @@ export const courseProposalSheets = sqliteTable(
   },
   (t) => [unique().on(t.studentId, t.year, t.season)],
 );
+
+/** 指導方針メモ（科目単位）。上段の自由記述＋下段の日付付きメモ */
+export const guidancePolicySheets = sqliteTable(
+  "guidance_policy_sheets",
+  {
+    id: text("id").primaryKey(),
+    studentId: text("student_id")
+      .notNull()
+      .references(() => students.id),
+    subject: text("subject").notNull(),
+    teacherId: text("teacher_id")
+      .notNull()
+      .references(() => users.id),
+    policyText: text("policy_text"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [unique().on(t.studentId, t.subject)],
+);
+
+export const guidancePolicyMemos = sqliteTable("guidance_policy_memos", {
+  id: text("id").primaryKey(),
+  sheetId: text("sheet_id")
+    .notNull()
+    .references(() => guidancePolicySheets.id),
+  memoDate: text("memo_date").notNull(),
+  body: text("body").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+

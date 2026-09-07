@@ -231,6 +231,26 @@ function ensureSchema(sqlite: Database.Database) {
     );
   }
 
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS guidance_policy_sheets (
+      id TEXT PRIMARY KEY,
+      student_id TEXT NOT NULL REFERENCES students(id),
+      subject TEXT NOT NULL,
+      teacher_id TEXT NOT NULL REFERENCES users(id),
+      policy_text TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(student_id, subject)
+    );
+    CREATE TABLE IF NOT EXISTS guidance_policy_memos (
+      id TEXT PRIMARY KEY,
+      sheet_id TEXT NOT NULL REFERENCES guidance_policy_sheets(id),
+      memo_date TEXT NOT NULL,
+      body TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+  `);
+
   const testCourseCleanup = sqlite
     .prepare(`SELECT value FROM app_meta WHERE key = 'test_course_link_cleanup'`)
     .get() as { value: string } | undefined;
