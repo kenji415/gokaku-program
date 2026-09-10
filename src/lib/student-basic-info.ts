@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import { SUBJECTS } from "./constants";
 import { getDb } from "./db";
@@ -20,6 +20,9 @@ import type {
   StudentBasicInfoInput,
   StudentSubjectAssignment,
 } from "./student-basic-info-types";
+import {
+  SUBJECT_TEACHER_SLOTS,
+} from "./student-basic-info-types";
 
 export type {
   StudentBasicInfo,
@@ -27,6 +30,7 @@ export type {
   StudentSubjectAssignment,
   TeacherOption,
 } from "./student-basic-info-types";
+export { assignmentSlotLabel, SUBJECT_TEACHER_SLOTS } from "./student-basic-info-types";
 
 export function createStudentBasicInfoTemplate(): StudentBasicInfo {
   return {
@@ -41,11 +45,14 @@ export function createStudentBasicInfoTemplate(): StudentBasicInfo {
     mockExamPattern: "",
     targetSchool: "",
     graduatedAt: null,
-    assignments: SUBJECTS.map((subject) => ({
-      subject,
-      teacherId: "",
-      teacherName: "",
-    })),
+    assignments: SUBJECTS.flatMap((subject) =>
+      SUBJECT_TEACHER_SLOTS.map((slot) => ({
+        subject,
+        slot,
+        teacherId: "",
+        teacherName: "",
+      })),
+    ),
     teacherOptions: listTeachers().map((t) => ({ id: t.id, name: t.name })),
   };
 }
@@ -89,25 +96,40 @@ export function createStudentFromBasicInfo(input: {
 
 function buildAssignments(studentId: string): StudentSubjectAssignment[] {
   const existing = getStudentAssignments(studentId);
-  const bySubject = new Map(existing.map((a) => [a.subject, a]));
+  const bySubject = new Map<string, typeof existing>();
+  for (const row of existing) {
+    const list = bySubject.get(row.subject) ?? [];
+    list.push(row);
+    bySubject.set(row.subject, list);
+  }
 
-  const base = SUBJECTS.map((subject) => {
-    const row = bySubject.get(subject);
-    return {
-      subject,
-      teacherId: row?.teacherId ?? "",
-      teacherName: row?.teacherName ?? "",
-    };
+  const base = SUBJECTS.flatMap((subject) => {
+    const rows = bySubject.get(subject) ?? [];
+    const bySlot = new Map(rows.map((row) => [row.slot, row]));
+    return SUBJECT_TEACHER_SLOTS.map((slot) => {
+      const row = bySlot.get(slot);
+      return {
+        subject,
+        slot,
+        teacherId: row?.teacherId ?? "",
+        teacherName: row?.teacherName ?? "",
+      };
+    });
   });
 
   const extras = existing
     .filter((row) => !(SUBJECTS as readonly string[]).includes(row.subject))
     .map((row) => ({
       subject: row.subject,
+      slot: (row.slot === 2 ? 2 : 1) as 1 | 2,
       teacherId: row.teacherId,
       teacherName: row.teacherName,
     }))
-    .sort((a, b) => a.subject.localeCompare(b.subject, "ja"));
+    .sort((a, b) => {
+      const subjectCmp = a.subject.localeCompare(b.subject, "ja");
+      if (subjectCmp !== 0) return subjectCmp;
+      return a.slot - b.slot;
+    });
 
   return [...base, ...extras];
 }
@@ -151,41 +173,88 @@ export function getStudentBasicInfo(
 
 function syncStudentAssignments(
   studentId: string,
-  assignments: { subject: string; teacherId: string }[],
+  assignments: { subject: string; teacherId: string; slot?: 1 | 2 }[],
 ) {
   const db = getDb();
-  const existing = getStudentAssignments(studentId);
   const now = new Date().toISOString();
+
+  const nextRows: { subject: string; teacherId: string; slot: 1 | 2 }[] = [];
+  const seenTeacherSubject = new Set<string>();
+  const usedSlot = new Set<string>();
+
+  for (const assignment of assignments) {
+    const subject = assignment.subject.trim();
+    const teacherId = assignment.teacherId.trim();
+    if (!subject || !teacherId) continue;
+    const teacherKey = `${subject}\0${teacherId}`;
+    if (seenTeacherSubject.has(teacherKey)) continue;
+
+    let slot: 1 | 2 = assignment.slot === 2 ? 2 : 1;
+    const slotKey = `${subject}\0${slot}`;
+    if (usedSlot.has(slotKey)) {
+      slot = slot === 1 ? 2 : 1;
+    }
+    const resolvedSlotKey = `${subject}\0${slot}`;
+    if (usedSlot.has(resolvedSlotKey)) continue;
+
+    seenTeacherSubject.add(teacherKey);
+    usedSlot.add(resolvedSlotKey);
+    nextRows.push({ subject, teacherId, slot });
+  }
+
+  // スロット順に並べてから保存（連名・主担当の一貫性）
+  nextRows.sort((a, b) => {
+    const subjectCmp = a.subject.localeCompare(b.subject, "ja");
+    if (subjectCmp !== 0) return subjectCmp;
+    return a.slot - b.slot;
+  });
 
   db.delete(schema.studentAssignments)
     .where(eq(schema.studentAssignments.studentId, studentId))
     .run();
 
-  for (const assignment of assignments) {
-    const teacherId = assignment.teacherId.trim();
-    if (!teacherId) continue;
-
+  for (const row of nextRows) {
     db.insert(schema.studentAssignments)
       .values({
         id: uuid(),
         studentId,
-        teacherId,
-        subject: assignment.subject,
+        teacherId: row.teacherId,
+        subject: row.subject,
+        slot: row.slot,
       })
       .run();
+  }
 
-    const prev = existing.find((row) => row.subject === assignment.subject);
-    if (prev?.teacherId === teacherId) continue;
+  const teachersBySubject = new Map<string, string[]>();
+  for (const row of nextRows) {
+    const list = teachersBySubject.get(row.subject) ?? [];
+    list.push(row.teacherId);
+    teachersBySubject.set(row.subject, list);
+  }
 
-    db.update(schema.programSheets)
-      .set({ teacherId, updatedAt: now })
+  for (const [subject, teacherIds] of teachersBySubject) {
+    const primaryTeacherId = teacherIds[0];
+    const sheets = db
+      .select({
+        id: schema.programSheets.id,
+        teacherId: schema.programSheets.teacherId,
+      })
+      .from(schema.programSheets)
       .where(
         and(
           eq(schema.programSheets.studentId, studentId),
-          eq(schema.programSheets.subject, assignment.subject),
+          eq(schema.programSheets.subject, subject),
         ),
       )
-      .run();
+      .all();
+
+    for (const sheet of sheets) {
+      if (teacherIds.includes(sheet.teacherId)) continue;
+      db.update(schema.programSheets)
+        .set({ teacherId: primaryTeacherId, updatedAt: now })
+        .where(eq(schema.programSheets.id, sheet.id))
+        .run();
+    }
   }
 }
 
@@ -284,10 +353,11 @@ export function assignSelfToStudentSubject(
     .get();
   if (!student) return { status: "not-found" };
 
-  const existing = db
+  const existingAll = db
     .select({
       id: schema.studentAssignments.id,
       teacherId: schema.studentAssignments.teacherId,
+      slot: schema.studentAssignments.slot,
     })
     .from(schema.studentAssignments)
     .where(
@@ -296,29 +366,51 @@ export function assignSelfToStudentSubject(
         eq(schema.studentAssignments.subject, subject),
       ),
     )
-    .get();
+    .orderBy(asc(schema.studentAssignments.slot))
+    .all();
 
   const now = new Date().toISOString();
 
-  if (existing) {
-    if (existing.teacherId === teacherId) return { status: "ok" };
-    if (!force) {
-      const other = db
-        .select({ name: schema.users.name })
-        .from(schema.users)
-        .where(eq(schema.users.id, existing.teacherId))
-        .get();
-      return { status: "taken", teacherName: other?.name ?? "他の講師" };
-    }
-    db.update(schema.studentAssignments)
-      .set({ teacherId })
-      .where(eq(schema.studentAssignments.id, existing.id))
-      .run();
-  } else {
-    db.insert(schema.studentAssignments)
-      .values({ id: uuid(), studentId, teacherId, subject })
-      .run();
+  if (existingAll.some((row) => row.teacherId === teacherId)) {
+    return { status: "ok" };
   }
+
+  const usedSlots = new Set(existingAll.map((row) => row.slot));
+  const nextSlot: 1 | 2 = usedSlots.has(1) ? 2 : 1;
+
+  if (existingAll.length < 2) {
+    db.insert(schema.studentAssignments)
+      .values({ id: uuid(), studentId, teacherId, subject, slot: nextSlot })
+      .run();
+    if (nextSlot === 1) {
+      db.update(schema.programSheets)
+        .set({ teacherId, updatedAt: now })
+        .where(
+          and(
+            eq(schema.programSheets.studentId, studentId),
+            eq(schema.programSheets.subject, subject),
+          ),
+        )
+        .run();
+    }
+    return { status: "ok" };
+  }
+
+  if (!force) {
+    const other = db
+      .select({ name: schema.users.name })
+      .from(schema.users)
+      .where(eq(schema.users.id, existingAll[0].teacherId))
+      .get();
+    return { status: "taken", teacherName: other?.name ?? "他の講師" };
+  }
+
+  // force: スロット1を入れ替え（左＝担当1）
+  const slot1 = existingAll.find((row) => row.slot === 1) ?? existingAll[0];
+  db.update(schema.studentAssignments)
+    .set({ teacherId })
+    .where(eq(schema.studentAssignments.id, slot1.id))
+    .run();
 
   db.update(schema.programSheets)
     .set({ teacherId, updatedAt: now })

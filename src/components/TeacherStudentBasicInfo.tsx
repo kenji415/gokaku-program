@@ -15,6 +15,7 @@ import { normalizeStudentName } from "@/lib/student-name";
 import { resolveTeacherAssignment } from "@/lib/teacher-assignment";
 import { TeacherAssignmentInput } from "@/components/TeacherAssignmentInput";
 import type { StudentBasicInfo } from "@/lib/student-basic-info-types";
+import { assignmentSlotLabel } from "@/lib/student-basic-info-types";
 
 type StudentSummary = {
   id: string;
@@ -64,6 +65,7 @@ function buildPayload(
         return {
           subject: row.subject.trim(),
           teacherId: resolved.teacherId,
+          slot: row.slot,
         };
       })
       .filter((row) => row.teacherId && row.subject),
@@ -203,16 +205,32 @@ export function TeacherStudentBasicInfo({
   };
 
   const updateAssignment = (
-    subject: string,
+    index: number,
     nextTeacherId: string,
     nextTeacherName: string,
   ) => {
     setInfo((prev) => {
       if (!prev) return prev;
+      const current = prev.assignments[index];
+      if (!current) return prev;
+
+      if (nextTeacherId) {
+        const duplicate = prev.assignments.some(
+          (row, i) =>
+            i !== index &&
+            row.subject === current.subject &&
+            row.teacherId === nextTeacherId,
+        );
+        if (duplicate) {
+          window.alert("同じ科目に同じ講師は登録できません");
+          return prev;
+        }
+      }
+
       return {
         ...prev,
-        assignments: prev.assignments.map((row) =>
-          row.subject === subject
+        assignments: prev.assignments.map((row, i) =>
+          i === index
             ? {
                 ...row,
                 teacherId: nextTeacherId,
@@ -292,7 +310,7 @@ export function TeacherStudentBasicInfo({
         ...prev,
         assignments: [
           ...prev.assignments,
-          { subject: trimmed, teacherId: "", teacherName: "" },
+          { subject: trimmed, slot: 1 as const, teacherId: "", teacherName: "" },
         ],
       };
     });
@@ -689,18 +707,25 @@ export function TeacherStudentBasicInfo({
               科目別担当講師
             </legend>
             <p className="mb-3 text-xs text-gray-500">
-              同一科目は1名のみ。講師名を入力すると候補が表示されます。割当すると講師のメーカーに表示されます。一覧にない科目は下から追加できます。
+              各科目は最大2名まで（例: 算数／算数2）。2人目も同じプログラムシートを連名で編集できます。講師名を入力すると候補が表示されます。一覧にない科目は下から追加できます。
             </p>
             <div className="grid grid-cols-2 gap-3">
               {info.assignments.map((row, index) => {
                 const fixed = isFixedSubject(row.subject);
+                const label = fixed
+                  ? assignmentSlotLabel(row.subject, row.slot)
+                  : row.subject;
                 return (
                   <div
-                    key={fixed ? row.subject : `custom-${index}`}
+                    key={
+                      fixed
+                        ? `${row.subject}:${row.slot}`
+                        : `custom-${index}`
+                    }
                     className="flex min-w-0 items-center gap-2 text-sm"
                   >
                     {fixed ? (
-                      <span className="w-10 shrink-0">{row.subject}</span>
+                      <span className="w-12 shrink-0">{label}</span>
                     ) : (
                       <input
                         className="w-16 shrink-0 rounded border border-gray-300 bg-white px-1.5 py-2 text-sm"
@@ -720,7 +745,7 @@ export function TeacherStudentBasicInfo({
                       className={`${fieldClass} min-w-0 flex-1`}
                       onChange={(nextTeacherId, nextTeacherName) =>
                         updateAssignment(
-                          row.subject,
+                          index,
                           nextTeacherId,
                           nextTeacherName,
                         )

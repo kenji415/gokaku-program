@@ -156,6 +156,7 @@ type AssignmentOverviewRow = {
   grade: string;
   studentCampus: string | null;
   subject: string;
+  slot: number;
 };
 
 function listActiveAssignmentRows(): AssignmentOverviewRow[] {
@@ -170,6 +171,7 @@ function listActiveAssignmentRows(): AssignmentOverviewRow[] {
       grade: schema.students.grade,
       studentCampus: schema.students.campus,
       subject: schema.studentAssignments.subject,
+      slot: schema.studentAssignments.slot,
     })
     .from(schema.studentAssignments)
     .innerJoin(
@@ -181,6 +183,7 @@ function listActiveAssignmentRows(): AssignmentOverviewRow[] {
       eq(schema.users.id, schema.studentAssignments.teacherId),
     )
     .where(isNull(schema.students.graduatedAt))
+    .orderBy(asc(schema.studentAssignments.slot))
     .all();
 }
 
@@ -605,10 +608,18 @@ export function getCourseProposalTeacherOverview(
         assigneesByStudent.set(row.studentId, created);
         return created;
       })();
-    bySubject.set(row.subject, {
-      teacherId: row.teacherId,
-      teacherName: row.teacherName,
-    });
+    const existing = bySubject.get(row.subject);
+    if (existing) {
+      const name = row.teacherName.trim();
+      if (name && !existing.teacherName.includes(name)) {
+        existing.teacherName = `${existing.teacherName}　${name}`;
+      }
+    } else {
+      bySubject.set(row.subject, {
+        teacherId: row.teacherId,
+        teacherName: row.teacherName,
+      });
+    }
   }
 
   const students: TeacherOverviewStudentRow[] = [];

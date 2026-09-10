@@ -7,11 +7,16 @@ import { useTestScheduleCramSchoolNames } from "@/hooks/use-test-schedule-cram-s
 import { useAutoSave } from "@/hooks/use-auto-save";
 import { TeacherAssignmentInput } from "@/components/TeacherAssignmentInput";
 import { teacherDisplayName } from "@/lib/teacher-assignment";
+import {
+  assignmentSlotLabel,
+  SUBJECT_TEACHER_SLOTS,
+} from "@/lib/student-basic-info-types";
 
 type Teacher = { id: string; name: string };
 
 type AssignmentRow = {
   subject: string;
+  slot: 1 | 2;
   teacherId: string;
 };
 
@@ -26,7 +31,7 @@ type StudentFormProps = {
     mockExamPattern: string;
     initialChallenges: string;
   };
-  initialAssignments?: AssignmentRow[];
+  initialAssignments?: { subject: string; teacherId: string }[];
   teachers: Teacher[];
   studentId?: string;
 };
@@ -52,14 +57,23 @@ export function StudentForm({
   });
 
   const [assignments, setAssignments] = useState<AssignmentRow[]>(() => {
-    const map = new Map(initialAssignments.map((a) => [a.subject, a.teacherId]));
-    const base = SUBJECTS.map((subject) => ({
-      subject,
-      teacherId: map.get(subject) ?? "",
-    }));
+    const bySubject = new Map<string, string[]>();
+    for (const a of initialAssignments) {
+      const list = bySubject.get(a.subject) ?? [];
+      list.push(a.teacherId);
+      bySubject.set(a.subject, list);
+    }
+    const base = SUBJECTS.flatMap((subject) => {
+      const ids = bySubject.get(subject) ?? [];
+      return SUBJECT_TEACHER_SLOTS.map((slot) => ({
+        subject,
+        slot,
+        teacherId: ids[slot - 1] ?? "",
+      }));
+    });
     const extras = initialAssignments
       .filter((a) => !(SUBJECTS as readonly string[]).includes(a.subject))
-      .map((a) => ({ subject: a.subject, teacherId: a.teacherId }))
+      .map((a) => ({ subject: a.subject, slot: 1 as const, teacherId: a.teacherId }))
       .sort((a, b) => a.subject.localeCompare(b.subject, "ja"));
     return [...base, ...extras];
   });
@@ -88,11 +102,17 @@ export function StudentForm({
       ...currentForm,
       goal: "志望校合格に向けて",
       assignments: currentAssignments
+        .filter((a) => a.teacherId && a.subject.trim())
+        .sort((a, b) => {
+          const subjectCmp = a.subject.localeCompare(b.subject, "ja");
+          if (subjectCmp !== 0) return subjectCmp;
+          return a.slot - b.slot;
+        })
         .map((a) => ({
           subject: a.subject.trim(),
           teacherId: a.teacherId,
-        }))
-        .filter((a) => a.teacherId && a.subject),
+          slot: a.slot,
+        })),
     };
 
     const res = await fetch(
@@ -256,18 +276,21 @@ export function StudentForm({
       <fieldset className="rounded border p-4">
         <legend className="px-2 text-sm font-medium">科目別担当講師</legend>
         <p className="mb-3 text-xs text-gray-500">
-          同一科目は1名のみ。講師名を入力すると候補が表示されます。割当すると講師のメーカーに表示されます。一覧にない科目は下から追加できます。
+          各科目は最大2名まで（例: 算数／算数2）。2人目も同じプログラムシートを連名で編集できます。講師名を入力すると候補が表示されます。一覧にない科目は下から追加できます。
         </p>
         <div className="space-y-2">
           {assignments.map((row, i) => {
             const fixed = isFixedSubject(row.subject);
+            const label = fixed
+              ? assignmentSlotLabel(row.subject, row.slot)
+              : row.subject;
             return (
               <div
-                key={fixed ? row.subject : `custom-${i}`}
+                key={fixed ? `${row.subject}:${row.slot}` : `custom-${i}`}
                 className="flex items-center gap-3 text-sm"
               >
                 {fixed ? (
-                  <span className="w-12">{row.subject}</span>
+                  <span className="w-12">{label}</span>
                 ) : (
                   <input
                     className="w-16 rounded border px-1.5 py-1"
@@ -306,6 +329,18 @@ export function StudentForm({
                   options={teachers}
                   className="flex-1 rounded border px-2 py-1"
                   onChange={(teacherId) => {
+                    if (
+                      teacherId &&
+                      assignments.some(
+                        (a, idx) =>
+                          idx !== i &&
+                          a.subject === row.subject &&
+                          a.teacherId === teacherId,
+                      )
+                    ) {
+                      window.alert("同じ科目に同じ講師は登録できません");
+                      return;
+                    }
                     const next = [...assignments];
                     next[i] = { ...row, teacherId };
                     setAssignments(next);
@@ -345,7 +380,7 @@ export function StudentForm({
               }
               setAssignments((prev) => [
                 ...prev,
-                { subject: trimmed, teacherId: "" },
+                { subject: trimmed, slot: 1 as const, teacherId: "" },
               ]);
               setNewSubjectName("");
             }}
@@ -363,7 +398,7 @@ export function StudentForm({
               }
               setAssignments((prev) => [
                 ...prev,
-                { subject: trimmed, teacherId: "" },
+                { subject: trimmed, slot: 1 as const, teacherId: "" },
               ]);
               setNewSubjectName("");
             }}

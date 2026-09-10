@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import { getDb } from "./db";
 import * as schema from "./db/schema";
@@ -629,6 +629,7 @@ function consolidateProgramSheets(
   teacherId: string,
 ): ProgramSheetRow | null {
   const db = getDb();
+  // 同一科目は講師が複数でもシートは1枚。studentId+subject で統合する
   const sheets = db
     .select()
     .from(schema.programSheets)
@@ -636,7 +637,6 @@ function consolidateProgramSheets(
       and(
         eq(schema.programSheets.studentId, studentId),
         eq(schema.programSheets.subject, subject),
-        eq(schema.programSheets.teacherId, teacherId),
       ),
     )
     .orderBy(desc(schema.programSheets.updatedAt))
@@ -644,8 +644,12 @@ function consolidateProgramSheets(
 
   if (sheets.length === 0) return null;
 
-  const primary = sheets[0];
-  for (const duplicate of sheets.slice(1)) {
+  const preferred =
+    sheets.find((row) => row.teacherId === teacherId) ?? sheets[0];
+  const primary = preferred;
+  const duplicates = sheets.filter((row) => row.id !== primary.id);
+
+  for (const duplicate of duplicates) {
     const dupMonths = db
       .select()
       .from(schema.programMonths)
@@ -1124,6 +1128,29 @@ export function getProgramSheet(sheetId: string): ProgramSheetData | null {
     student.campus,
   );
 
+  const assigneeRows = db
+    .select({ teacherName: schema.users.name })
+    .from(schema.studentAssignments)
+    .innerJoin(
+      schema.users,
+      eq(schema.users.id, schema.studentAssignments.teacherId),
+    )
+    .where(
+      and(
+        eq(schema.studentAssignments.studentId, sheet.studentId),
+        eq(schema.studentAssignments.subject, sheet.subject),
+      ),
+    )
+    .orderBy(asc(schema.studentAssignments.slot))
+    .all();
+  const coTeacherNames = assigneeRows
+    .map((row) => row.teacherName.trim())
+    .filter(Boolean);
+  const teacherDisplayName =
+    coTeacherNames.length > 0
+      ? [...new Set(coTeacherNames)].join("　")
+      : teacher.name;
+
   return {
     id: sheet.id,
     studentId: sheet.studentId,
@@ -1158,7 +1185,7 @@ export function getProgramSheet(sheetId: string): ProgramSheetData | null {
       className: resolveStudentClassName(student),
       targetSchool: trimOrEmpty(student.targetSchool),
     },
-    teacher: { name: teacher.name },
+    teacher: { name: teacherDisplayName },
     contentFontSize: normalizeProgramContentFontSize(sheet.contentFontSize),
     months: monthsData,
   };

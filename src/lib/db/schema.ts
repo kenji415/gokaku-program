@@ -41,8 +41,13 @@ export const studentAssignments = sqliteTable(
       .notNull()
       .references(() => users.id),
     subject: text("subject").notNull(),
+    /** 1=主担当（左）、2=第2担当（右）。同一科目シートを共有 */
+    slot: integer("slot").notNull().default(1),
   },
-  (t) => [unique().on(t.studentId, t.subject)],
+  (t) => [
+    unique().on(t.studentId, t.subject, t.teacherId),
+    unique().on(t.studentId, t.subject, t.slot),
+  ],
 );
 
 export const testSchedules = sqliteTable("test_schedules", {

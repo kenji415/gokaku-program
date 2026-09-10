@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import { getDb } from "./db";
 import * as schema from "./db/schema";
@@ -32,6 +32,7 @@ export type StudentInput = {
 export type AssignmentInput = {
   subject: string;
   teacherId: string;
+  slot?: 1 | 2;
 };
 
 export function listStudents() {
@@ -63,6 +64,7 @@ export function getStudentAssignments(studentId: string) {
     .select({
       id: schema.studentAssignments.id,
       subject: schema.studentAssignments.subject,
+      slot: schema.studentAssignments.slot,
       teacherId: schema.studentAssignments.teacherId,
       teacherName: schema.users.name,
     })
@@ -72,6 +74,7 @@ export function getStudentAssignments(studentId: string) {
       eq(schema.users.id, schema.studentAssignments.teacherId),
     )
     .where(eq(schema.studentAssignments.studentId, studentId))
+    .orderBy(asc(schema.studentAssignments.slot))
     .all();
 }
 
@@ -229,14 +232,42 @@ function syncAssignments(studentId: string, assignments: AssignmentInput[]) {
     .where(eq(schema.studentAssignments.studentId, studentId))
     .run();
 
+  const usedSlot = new Set<string>();
+  const usedTeacher = new Set<string>();
+  const rows: { subject: string; teacherId: string; slot: 1 | 2 }[] = [];
+
   for (const a of assignments) {
     if (!a.teacherId) continue;
+    const subject = a.subject.trim();
+    if (!subject) continue;
+    const teacherKey = `${subject}\0${a.teacherId}`;
+    if (usedTeacher.has(teacherKey)) continue;
+
+    let slot: 1 | 2 = a.slot === 2 ? 2 : 1;
+    if (usedSlot.has(`${subject}\0${slot}`)) {
+      slot = slot === 1 ? 2 : 1;
+    }
+    if (usedSlot.has(`${subject}\0${slot}`)) continue;
+
+    usedTeacher.add(teacherKey);
+    usedSlot.add(`${subject}\0${slot}`);
+    rows.push({ subject, teacherId: a.teacherId, slot });
+  }
+
+  rows.sort((a, b) => {
+    const subjectCmp = a.subject.localeCompare(b.subject, "ja");
+    if (subjectCmp !== 0) return subjectCmp;
+    return a.slot - b.slot;
+  });
+
+  for (const row of rows) {
     db.insert(schema.studentAssignments)
       .values({
         id: uuid(),
         studentId,
-        teacherId: a.teacherId,
-        subject: a.subject,
+        teacherId: row.teacherId,
+        subject: row.subject,
+        slot: row.slot,
       })
       .run();
   }

@@ -64,7 +64,7 @@ export function TeacherStudentList({
         const teacherName = data.teacherName ?? "他の講師";
         if (
           !window.confirm(
-            `${subject}は${teacherName}先生が担当中です。あなたに引き継ぎますか？`,
+            `${subject}の担当が埋まっています（${teacherName}先生ほか）。入れ替えて担当に加わりますか？`,
           )
         ) {
           return;

@@ -222,6 +222,9 @@ function ensureSchema(sqlite: Database.Database) {
     );
   `);
 
+  migrateStudentAssignmentsMultiTeacher(sqlite);
+  migrateStudentAssignmentSlots(sqlite);
+
   const courseProposalSheetColumns = sqlite
     .prepare("PRAGMA table_info(course_proposal_sheets)")
     .all() as { name: string }[];
@@ -505,7 +508,9 @@ function createDb() {
       student_id TEXT NOT NULL REFERENCES students(id),
       teacher_id TEXT NOT NULL REFERENCES users(id),
       subject TEXT NOT NULL,
-      UNIQUE(student_id, subject)
+      slot INTEGER NOT NULL DEFAULT 1,
+      UNIQUE(student_id, subject, teacher_id),
+      UNIQUE(student_id, subject, slot)
     );
     CREATE TABLE IF NOT EXISTS test_schedules (
       id TEXT PRIMARY KEY,
@@ -584,6 +589,118 @@ function createDb() {
   snapshotProgramSheetStartTargetSchool(sqlite);
 
   return { drizzle: db, sqlite };
+}
+
+function migrateStudentAssignmentsMultiTeacher(sqlite: Database.Database) {
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT)`);
+  const done = sqlite
+    .prepare(
+      `SELECT value FROM app_meta WHERE key = 'student_assignments_multi_teacher_v1'`,
+    )
+    .get() as { value: string } | undefined;
+  if (done) return;
+
+  sqlite.exec(`
+    CREATE TABLE student_assignments_multi_teacher (
+      id TEXT PRIMARY KEY,
+      student_id TEXT NOT NULL REFERENCES students(id),
+      teacher_id TEXT NOT NULL REFERENCES users(id),
+      subject TEXT NOT NULL,
+      UNIQUE(student_id, subject, teacher_id)
+    );
+  `);
+  sqlite.exec(`
+    INSERT OR IGNORE INTO student_assignments_multi_teacher (id, student_id, teacher_id, subject)
+    SELECT id, student_id, teacher_id, subject FROM student_assignments;
+  `);
+  sqlite.exec(`DROP TABLE student_assignments`);
+  sqlite.exec(
+    `ALTER TABLE student_assignments_multi_teacher RENAME TO student_assignments`,
+  );
+  sqlite
+    .prepare(
+      `INSERT INTO app_meta (key, value) VALUES ('student_assignments_multi_teacher_v1', '1')`,
+    )
+    .run();
+}
+
+/** 担当スロット(1=左, 2=右)を永続化し、連名表示順を固定する */
+function migrateStudentAssignmentSlots(sqlite: Database.Database) {
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT)`);
+  const done = sqlite
+    .prepare(
+      `SELECT value FROM app_meta WHERE key = 'student_assignments_slot_v1'`,
+    )
+    .get() as { value: string } | undefined;
+  if (done) return;
+
+  const columns = sqlite
+    .prepare("PRAGMA table_info(student_assignments)")
+    .all() as { name: string }[];
+  if (!columns.some((c) => c.name === "slot")) {
+    sqlite.exec(
+      `ALTER TABLE student_assignments ADD COLUMN slot INTEGER NOT NULL DEFAULT 1`,
+    );
+  }
+
+  // 同一生徒・科目内で rowid 順に 1,2 を振る
+  const groups = sqlite
+    .prepare(
+      `
+      SELECT student_id, subject
+      FROM student_assignments
+      GROUP BY student_id, subject
+      HAVING COUNT(*) > 0
+      `,
+    )
+    .all() as { student_id: string; subject: string }[];
+
+  const selectRows = sqlite.prepare(
+    `
+    SELECT id FROM student_assignments
+    WHERE student_id = ? AND subject = ?
+    ORDER BY rowid ASC
+    `,
+  );
+  const updateSlot = sqlite.prepare(
+    `UPDATE student_assignments SET slot = ? WHERE id = ?`,
+  );
+
+  for (const group of groups) {
+    const rows = selectRows.all(group.student_id, group.subject) as {
+      id: string;
+    }[];
+    rows.forEach((row, index) => {
+      const slot = Math.min(index + 1, 2);
+      updateSlot.run(slot, row.id);
+    });
+  }
+
+  sqlite.exec(`
+    CREATE TABLE student_assignments_with_slot (
+      id TEXT PRIMARY KEY,
+      student_id TEXT NOT NULL REFERENCES students(id),
+      teacher_id TEXT NOT NULL REFERENCES users(id),
+      subject TEXT NOT NULL,
+      slot INTEGER NOT NULL DEFAULT 1,
+      UNIQUE(student_id, subject, teacher_id),
+      UNIQUE(student_id, subject, slot)
+    );
+  `);
+  sqlite.exec(`
+    INSERT OR IGNORE INTO student_assignments_with_slot (id, student_id, teacher_id, subject, slot)
+    SELECT id, student_id, teacher_id, subject, slot FROM student_assignments;
+  `);
+  sqlite.exec(`DROP TABLE student_assignments`);
+  sqlite.exec(
+    `ALTER TABLE student_assignments_with_slot RENAME TO student_assignments`,
+  );
+
+  sqlite
+    .prepare(
+      `INSERT INTO app_meta (key, value) VALUES ('student_assignments_slot_v1', '1')`,
+    )
+    .run();
 }
 
 function migrateStudentMonthTests(sqlite: Database.Database) {

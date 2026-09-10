@@ -200,6 +200,24 @@ export function getFinalStretchSheet(sheetId: string): FinalStretchSheetData | n
     .all()
     .map(mapRow);
 
+  const assigneeNames = db
+    .select({ name: schema.users.name })
+    .from(schema.studentAssignments)
+    .innerJoin(
+      schema.users,
+      eq(schema.users.id, schema.studentAssignments.teacherId),
+    )
+    .where(
+      and(
+        eq(schema.studentAssignments.studentId, sheet.studentId),
+        eq(schema.studentAssignments.subject, sheet.subject),
+      ),
+    )
+    .orderBy(asc(schema.studentAssignments.slot))
+    .all()
+    .map((row) => row.name.trim())
+    .filter(Boolean);
+
   return {
     id: sheet.id,
     studentId: sheet.studentId,
@@ -220,7 +238,12 @@ export function getFinalStretchSheet(sheetId: string): FinalStretchSheetData | n
       campus: trimOrEmpty(student.campus),
       targetSchool: trimOrEmpty(student.targetSchool),
     },
-    teacher: { name: teacher.name },
+    teacher: {
+      name:
+        assigneeNames.length > 0
+          ? [...new Set(assigneeNames)].join("　")
+          : teacher.name,
+    },
     rows: normalizeRows(rows),
     updatedAt: sheet.updatedAt,
   };

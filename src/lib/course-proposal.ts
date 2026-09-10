@@ -126,10 +126,13 @@ function defaultTeacherNamesForStudent(
   const assignments = getStudentAssignments(studentId);
   const names: Partial<Record<CourseProposalSubject, string>> = {};
 
+  // getStudentAssignments は slot 昇順
   for (const assignment of assignments) {
     const teacherName = assignment.teacherName?.trim() ?? "";
     if (!teacherName) continue;
-    names[assignment.subject] = teacherName;
+    const subject = assignment.subject as CourseProposalSubject;
+    const prev = names[subject]?.trim();
+    names[subject] = prev ? `${prev}　${teacherName}` : teacherName;
   }
 
   return names;
