@@ -1,4 +1,4 @@
-import { eq, like, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { v4 as uuid } from "uuid";
 import { getDb } from "./db";
@@ -178,6 +178,11 @@ export function seedMembersIfNeeded(
   sqlite: import("better-sqlite3").Database,
   db: BetterSQLite3Database<typeof schema>,
 ): void {
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT)`);
+  const flag = sqlite
+    .prepare(`SELECT value FROM app_meta WHERE key = 'seed_members_v1'`)
+    .get() as { value: string } | undefined;
+  const alreadySeeded = Boolean(flag);
 
   for (const member of INITIAL_MEMBERS) {
     let existing =
@@ -185,22 +190,7 @@ export function seedMembersIfNeeded(
         .select()
         .from(schema.users)
         .where(eq(schema.users.loginId, member.loginId))
-        .get() ??
-      db
-        .select()
-        .from(schema.users)
-        .where(eq(schema.users.name, member.name))
-        .get() ??
-      db
-        .select()
-        .from(schema.users)
-        .where(like(schema.users.name, `${member.loginId}%`))
-        .get() ??
-      db
-        .select()
-        .from(schema.users)
-        .where(eq(schema.users.loginId, member.password))
-        .get();
+        .get() ?? null;
 
     if (!existing && member.legacyLoginIds) {
       for (const legacyId of member.legacyLoginIds) {
@@ -208,7 +198,7 @@ export function seedMembersIfNeeded(
           .select()
           .from(schema.users)
           .where(eq(schema.users.loginId, legacyId))
-          .get();
+          .get() ?? null;
         if (existing) break;
       }
     }
@@ -220,17 +210,29 @@ export function seedMembersIfNeeded(
     );
 
     if (existing) {
-      db.update(schema.users)
-        .set({
-          name: member.name,
-          loginId: member.loginId,
-          password: member.password,
-          role,
-          memberRole: member.memberRole,
-          assignedCampus,
-        })
-        .where(eq(schema.users.id, existing.id))
-        .run();
+      // 初回シード時のみ正規化。以降はユーザー編集を上書きしない
+      // （旧ローマ字 loginId だけはログインできるよう漢字へ寄せる）
+      if (!alreadySeeded) {
+        db.update(schema.users)
+          .set({
+            name: member.name,
+            loginId: member.loginId,
+            password: member.password,
+            role,
+            memberRole: member.memberRole,
+            assignedCampus,
+          })
+          .where(eq(schema.users.id, existing.id))
+          .run();
+      } else if (
+        member.legacyLoginIds?.includes(existing.loginId) &&
+        existing.loginId !== member.loginId
+      ) {
+        db.update(schema.users)
+          .set({ loginId: member.loginId })
+          .where(eq(schema.users.id, existing.id))
+          .run();
+      }
       continue;
     }
 
@@ -247,10 +249,6 @@ export function seedMembersIfNeeded(
       })
       .run();
   }
-
-  const flag = sqlite
-    .prepare(`SELECT value FROM app_meta WHERE key = 'seed_members_v1'`)
-    .get() as { value: string } | undefined;
 
   if (!flag) {
     sqlite
