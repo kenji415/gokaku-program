@@ -130,6 +130,7 @@ export function TeacherStudentBasicInfo({
 
     setLoading(true);
     setLoadError("");
+    setInfo(null);
 
     const url = isNew
       ? "/api/programs/students"
@@ -150,7 +151,10 @@ export function TeacherStudentBasicInfo({
         }
       })
       .catch(() => {
-        if (!cancelled) setLoadError("生徒情報を読み込めませんでした");
+        if (!cancelled) {
+          setInfo(null);
+          setLoadError("生徒情報を読み込めませんでした");
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -332,8 +336,9 @@ export function TeacherStudentBasicInfo({
 
   const persist = useCallback(async (): Promise<boolean> => {
     const current = infoRef.current;
-    // 作成直後の再マウント／読込中は保存対象がない。失敗扱いにするとタブ切替を止めてしまう。
+    // 作成直後の再マウント／読込中／読込失敗は保存対象がない。失敗扱いにするとタブ切替を止めてしまう。
     if (!current) return true;
+    if (loadError) return true;
     if (!current.name.trim()) return true;
 
     const payload = buildPayload(current, classNameLockedRef.current);
@@ -385,7 +390,7 @@ export function TeacherStudentBasicInfo({
     setInfo(saved);
     onSaved?.(saved);
     return true;
-  }, [onExistingStudentFound, onSaved, onStudentCreated]);
+  }, [onExistingStudentFound, onSaved, onStudentCreated, loadError]);
 
   const { statusLabel, flush } = useAutoSave(persist, saveRevision, {
     enabled: !isNew,

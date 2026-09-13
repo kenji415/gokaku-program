@@ -13,6 +13,12 @@ export type {
   GuidancePolicySheetData,
 } from "./guidance-policy-types";
 
+/** 「山田 太郎」「山田　太郎」などから名字だけ取り出す */
+export function teacherSurname(fullName: string | null | undefined): string {
+  const trimmed = (fullName ?? "").trim();
+  if (!trimmed) return "";
+  return trimmed.split(/[\s　]+/)[0] ?? trimmed;
+}
 
 function resolveProgramSheetId(
   studentId: string,
@@ -74,8 +80,18 @@ export function userCanAccessGuidancePolicy(
 function loadMemos(sheetId: string): GuidancePolicyMemo[] {
   const db = getDb();
   return db
-    .select()
+    .select({
+      id: schema.guidancePolicyMemos.id,
+      memoDate: schema.guidancePolicyMemos.memoDate,
+      body: schema.guidancePolicyMemos.body,
+      createdAt: schema.guidancePolicyMemos.createdAt,
+      authorName: schema.users.name,
+    })
     .from(schema.guidancePolicyMemos)
+    .leftJoin(
+      schema.users,
+      eq(schema.users.id, schema.guidancePolicyMemos.authorTeacherId),
+    )
     .where(eq(schema.guidancePolicyMemos.sheetId, sheetId))
     .orderBy(desc(schema.guidancePolicyMemos.createdAt))
     .all()
@@ -84,6 +100,7 @@ function loadMemos(sheetId: string): GuidancePolicyMemo[] {
       memoDate: row.memoDate,
       body: row.body,
       createdAt: row.createdAt,
+      authorSurname: teacherSurname(row.authorName),
     }));
 }
 
@@ -187,10 +204,22 @@ export function updateGuidancePolicyText(
   return true;
 }
 
+function resolveAuthorSurname(authorTeacherId: string | null): string {
+  if (!authorTeacherId) return "";
+  const db = getDb();
+  const user = db
+    .select({ name: schema.users.name })
+    .from(schema.users)
+    .where(eq(schema.users.id, authorTeacherId))
+    .get();
+  return teacherSurname(user?.name);
+}
+
 export function addGuidancePolicyMemo(params: {
   sheetId: string;
   memoDate: string;
   body: string;
+  authorTeacherId: string;
 }): GuidancePolicyMemo | null {
   const memoDate = params.memoDate.trim();
   const body = params.body.trim();
@@ -212,6 +241,7 @@ export function addGuidancePolicyMemo(params: {
       sheetId: params.sheetId,
       memoDate,
       body,
+      authorTeacherId: params.authorTeacherId,
       createdAt: now,
     })
     .run();
@@ -220,7 +250,13 @@ export function addGuidancePolicyMemo(params: {
     .where(eq(schema.guidancePolicySheets.id, params.sheetId))
     .run();
 
-  return { id, memoDate, body, createdAt: now };
+  return {
+    id,
+    memoDate,
+    body,
+    createdAt: now,
+    authorSurname: resolveAuthorSurname(params.authorTeacherId),
+  };
 }
 
 export function updateGuidancePolicyMemo(params: {
@@ -261,6 +297,7 @@ export function updateGuidancePolicyMemo(params: {
     memoDate,
     body,
     createdAt: existing.createdAt,
+    authorSurname: resolveAuthorSurname(existing.authorTeacherId),
   };
 }
 

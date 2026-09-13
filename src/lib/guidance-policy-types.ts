@@ -3,6 +3,8 @@ export type GuidancePolicyMemo = {
   memoDate: string;
   body: string;
   createdAt: string;
+  /** 記入した講師の名字 */
+  authorSurname: string;
 };
 
 export type GuidancePolicySheetData = {

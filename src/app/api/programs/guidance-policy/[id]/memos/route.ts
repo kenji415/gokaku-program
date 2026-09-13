@@ -42,6 +42,7 @@ export async function POST(request: Request, { params }: Params) {
     sheetId: id,
     memoDate: body.memoDate ?? "",
     body: body.body ?? "",
+    authorTeacherId: session.id,
   });
   if (!memo) {
     return NextResponse.json({ error: "Invalid memo" }, { status: 400 });

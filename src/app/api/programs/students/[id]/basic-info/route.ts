@@ -17,12 +17,19 @@ export async function GET(
 
   const { id } = await params;
 
-  const info = getStudentBasicInfo(id);
-  if (!info) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  try {
+    const info = getStudentBasicInfo(id);
+    if (!info) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    return NextResponse.json(info);
+  } catch (error) {
+    console.error("[basic-info GET]", id, error);
+    return NextResponse.json(
+      { error: "Failed to load student basic info" },
+      { status: 500 },
+    );
   }
-
-  return NextResponse.json(info);
 }
 
 export async function PATCH(

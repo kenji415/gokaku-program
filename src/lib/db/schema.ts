@@ -244,6 +244,7 @@ export const guidancePolicyMemos = sqliteTable("guidance_policy_memos", {
     .references(() => guidancePolicySheets.id),
   memoDate: text("memo_date").notNull(),
   body: text("body").notNull(),
+  authorTeacherId: text("author_teacher_id").references(() => users.id),
   createdAt: text("created_at").notNull(),
 });
 

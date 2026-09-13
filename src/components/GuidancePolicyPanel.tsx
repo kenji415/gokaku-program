@@ -43,6 +43,7 @@ function syncSavedMemos(
 function AutoGrowTextarea({
   value,
   onChange,
+  onBlur,
   placeholder,
   minRows = 4,
   className = "",
@@ -50,6 +51,7 @@ function AutoGrowTextarea({
 }: {
   value: string;
   onChange: (value: string) => void;
+  onBlur?: (value: string) => void;
   placeholder?: string;
   minRows?: number;
   className?: string;
@@ -62,7 +64,10 @@ function AutoGrowTextarea({
     if (!el) return;
     el.style.height = "auto";
     const lineHeight = Number.parseFloat(getComputedStyle(el).lineHeight) || 20;
-    const minHeight = lineHeight * minRows + 16;
+    const paddingY =
+      Number.parseFloat(getComputedStyle(el).paddingTop) +
+        Number.parseFloat(getComputedStyle(el).paddingBottom) || 0;
+    const minHeight = lineHeight * minRows + paddingY;
     el.style.height = `${Math.max(minHeight, el.scrollHeight)}px`;
   }, [value, minRows]);
 
@@ -71,10 +76,11 @@ function AutoGrowTextarea({
       ref={ref}
       value={value}
       onChange={(e) => onChange(e.target.value)}
+      onBlur={() => onBlur?.(ref.current?.value ?? value)}
       placeholder={placeholder}
       rows={minRows}
       aria-label={ariaLabel}
-      className={`block w-full resize-none overflow-hidden rounded border border-gray-300 px-3 py-2 text-sm leading-relaxed text-gray-900 outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] ${className}`}
+      className={`block w-full resize-none overflow-hidden outline-none ${className}`}
     />
   );
 }
@@ -321,6 +327,7 @@ export function GuidancePolicyPanel({
             placeholder="指導方針・注意点・保護者との共有事項など"
             minRows={6}
             ariaLabel="指導方針"
+            className="rounded border border-gray-300 px-3 py-2 text-sm leading-relaxed text-gray-900 focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f]"
           />
         </section>
 
@@ -369,13 +376,13 @@ export function GuidancePolicyPanel({
               {memos.map((memo) => (
                 <li
                   key={memo.id}
-                  className="flex items-center gap-2 rounded border border-gray-200 bg-white px-3 py-2"
+                  className="flex items-start gap-2 rounded border border-gray-200 bg-white px-3 py-2"
                 >
                   <input
                     type="date"
                     lang="ja"
                     aria-label="メモ日付"
-                    className="shrink-0 rounded border border-gray-300 px-2 py-1 text-xs tabular-nums text-[#1e3a5f]"
+                    className="mt-0.5 shrink-0 rounded border border-gray-300 px-2 py-1 text-xs tabular-nums text-[#1e3a5f]"
                     value={memo.memoDate}
                     onChange={(e) => {
                       const memoDate = e.target.value;
@@ -392,38 +399,39 @@ export function GuidancePolicyPanel({
                       });
                     }}
                   />
-                  <input
-                    type="text"
-                    aria-label="メモ内容"
-                    className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-1 text-sm text-gray-900 outline-none hover:border-gray-300 focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f]"
+                  <AutoGrowTextarea
                     value={memo.body}
-                    onChange={(e) => {
-                      const body = e.target.value;
+                    minRows={1}
+                    ariaLabel="メモ内容"
+                    className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-xs leading-snug text-gray-900 hover:border-gray-300 focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f]"
+                    onChange={(body) => {
                       setMemos((prev) =>
                         prev.map((m) =>
                           m.id === memo.id ? { ...m, body } : m,
                         ),
                       );
                     }}
-                    onBlur={(e) => {
+                    onBlur={(body) => {
                       void handleUpdateMemo(memo.id, {
                         memoDate: memo.memoDate,
-                        body: e.target.value,
+                        body,
                       });
                     }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        (e.target as HTMLInputElement).blur();
-                      }
-                    }}
                   />
-                  <button
-                    type="button"
-                    className="shrink-0 text-xs text-gray-400 hover:text-red-600"
-                    onClick={() => void handleDeleteMemo(memo.id)}
-                  >
-                    削除
-                  </button>
+                  <div className="mt-0.5 flex shrink-0 flex-col items-end gap-0.5">
+                    <button
+                      type="button"
+                      className="text-xs text-gray-400 hover:text-red-600"
+                      onClick={() => void handleDeleteMemo(memo.id)}
+                    >
+                      削除
+                    </button>
+                    {memo.authorSurname ? (
+                      <span className="max-w-[3.5rem] truncate text-[10px] leading-tight text-gray-400">
+                        {memo.authorSurname}
+                      </span>
+                    ) : null}
+                  </div>
                 </li>
               ))}
             </ul>

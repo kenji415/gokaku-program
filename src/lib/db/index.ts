@@ -250,9 +250,19 @@ function ensureSchema(sqlite: Database.Database) {
       sheet_id TEXT NOT NULL REFERENCES guidance_policy_sheets(id),
       memo_date TEXT NOT NULL,
       body TEXT NOT NULL,
+      author_teacher_id TEXT REFERENCES users(id),
       created_at TEXT NOT NULL
     );
   `);
+
+  const guidanceMemoColumns = sqlite
+    .prepare("PRAGMA table_info(guidance_policy_memos)")
+    .all() as { name: string }[];
+  if (!guidanceMemoColumns.some((c) => c.name === "author_teacher_id")) {
+    sqlite.exec(
+      `ALTER TABLE guidance_policy_memos ADD COLUMN author_teacher_id TEXT REFERENCES users(id)`,
+    );
+  }
 
   const testCourseCleanup = sqlite
     .prepare(`SELECT value FROM app_meta WHERE key = 'test_course_link_cleanup'`)
@@ -600,6 +610,19 @@ function migrateStudentAssignmentsMultiTeacher(sqlite: Database.Database) {
     .get() as { value: string } | undefined;
   if (done) return;
 
+  const columns = sqlite
+    .prepare("PRAGMA table_info(student_assignments)")
+    .all() as { name: string }[];
+  // 既に slot 付きの新スキーマなら、slot を落とす再作成を避ける
+  if (columns.some((c) => c.name === "slot")) {
+    sqlite
+      .prepare(
+        `INSERT INTO app_meta (key, value) VALUES ('student_assignments_multi_teacher_v1', '1')`,
+      )
+      .run();
+    return;
+  }
+
   sqlite.exec(`
     CREATE TABLE student_assignments_multi_teacher (
       id TEXT PRIMARY KEY,
@@ -632,12 +655,14 @@ function migrateStudentAssignmentSlots(sqlite: Database.Database) {
       `SELECT value FROM app_meta WHERE key = 'student_assignments_slot_v1'`,
     )
     .get() as { value: string } | undefined;
-  if (done) return;
-
   const columns = sqlite
     .prepare("PRAGMA table_info(student_assignments)")
     .all() as { name: string }[];
-  if (!columns.some((c) => c.name === "slot")) {
+  const hasSlot = columns.some((c) => c.name === "slot");
+  // meta だけ立っていて列が無い壊れた状態も修復する
+  if (done && hasSlot) return;
+
+  if (!hasSlot) {
     sqlite.exec(
       `ALTER TABLE student_assignments ADD COLUMN slot INTEGER NOT NULL DEFAULT 1`,
     );
@@ -698,7 +723,7 @@ function migrateStudentAssignmentSlots(sqlite: Database.Database) {
 
   sqlite
     .prepare(
-      `INSERT INTO app_meta (key, value) VALUES ('student_assignments_slot_v1', '1')`,
+      `INSERT OR REPLACE INTO app_meta (key, value) VALUES ('student_assignments_slot_v1', '1')`,
     )
     .run();
 }
@@ -728,6 +753,9 @@ export function getDb() {
     globalForDb.db = createDb();
   } else {
     ensureStudentTestResultColumns(globalForDb.db.sqlite);
+    // ホットリロード後や外部 DB 差し替え後でも担当スロット移行を再適用
+    migrateStudentAssignmentsMultiTeacher(globalForDb.db.sqlite);
+    migrateStudentAssignmentSlots(globalForDb.db.sqlite);
   }
   return globalForDb.db.drizzle;
 }
