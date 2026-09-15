@@ -40,6 +40,12 @@ if "%ALREADY_UP%"=="1" (
   exit /b 0
 )
 
+REM Port may be held by a hung Next process that no longer answers HTTP.
+echo Checking for stale gokaku Next.js processes...
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$killed=0; Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -and ($_.CommandLine -like '*gokaku-program*next*' -or $_.CommandLine -like '*gokaku-program*scripts\\dev.mjs*' -or $_.CommandLine -like '*gokaku-program*scripts/dev.mjs*') } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; $killed++ }; if ($killed -gt 0) { Write-Host ('Stopped ' + $killed + ' stale process(es).') } else { Write-Host 'No stale process found.' }"
+timeout /t 1 /nobreak >nul
+
 echo Starting gokaku-program (npm run dev)...
 echo Browser will open after a few seconds.
 echo Press Ctrl+C in this window to stop.

@@ -36,10 +36,11 @@ export async function clearSessionCookie() {
 
 export function verifyLogin(loginId: string, password: string): SessionUser | null {
   const db = getDb();
+  const normalizedLoginId = loginId.trim();
   const user = db
     .select()
     .from(schema.users)
-    .where(eq(schema.users.loginId, loginId))
+    .where(eq(schema.users.loginId, normalizedLoginId))
     .get();
 
   if (!user || user.password !== password) return null;

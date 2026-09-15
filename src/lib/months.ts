@@ -145,7 +145,9 @@ export function buildPdfFilename(params: {
     params.studentName,
     params.gender,
   );
-  return `${displayName}_合格プログラムシート_${params.subject}_${params.grade}_${year}年${month}月_${params.teacherName.split(" ")[0] ?? params.teacherName}`;
+  const teacherSurname =
+    params.teacherName.trim().split(/[\s　]+/)[0] ?? params.teacherName.trim();
+  return `${displayName}_合格プログラムシート_${year}年${month}月_${params.subject}_${teacherSurname}`;
 }
 
 export function buildFinalStretchPdfFilename(params: {
@@ -159,7 +161,9 @@ export function buildFinalStretchPdfFilename(params: {
     params.studentName,
     params.gender,
   );
-  return `${displayName}_直前期合格プログラムシート_${params.subject}_${params.grade}_${params.teacherName.split(" ")[0] ?? params.teacherName}`;
+  const teacherSurname =
+    params.teacherName.trim().split(/[\s　]+/)[0] ?? params.teacherName.trim();
+  return `${displayName}_直前期合格プログラムシート_${params.subject}_${params.grade}_${teacherSurname}`;
 }
 
 export function buildCourseProposalPdfFilename(params: {
