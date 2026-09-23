@@ -6,6 +6,7 @@ import {
   createSessionToken,
   parseSessionToken,
   SESSION_COOKIE_NAME,
+  sessionCookieOptions,
   type SessionUser,
 } from "./auth-session";
 import { memberRoleToAccessRole, isMemberRole } from "./member-constants";
@@ -21,12 +22,11 @@ export async function getSession(): Promise<SessionUser | null> {
 
 export async function setSessionCookie(user: SessionUser) {
   const cookieStore = await cookies();
-  cookieStore.set(SESSION_COOKIE_NAME, await createSessionToken(user), {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 7,
-  });
+  cookieStore.set(
+    SESSION_COOKIE_NAME,
+    await createSessionToken(user),
+    sessionCookieOptions(),
+  );
 }
 
 export async function clearSessionCookie() {

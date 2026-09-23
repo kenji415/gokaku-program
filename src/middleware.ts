@@ -1,9 +1,18 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { parseSessionToken } from "@/lib/auth-session";
+import {
+  parseSessionToken,
+  SESSION_COOKIE_NAME,
+  sessionCookieOptions,
+} from "@/lib/auth-session";
 import { canViewTestSchedule } from "@/lib/test-schedule-access";
 
 const PUBLIC_PATHS = ["/login", "/api/auth/login"];
+
+function withRefreshedSession(response: NextResponse, token: string) {
+  response.cookies.set(SESSION_COOKIE_NAME, token, sessionCookieOptions());
+  return response;
+}
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -16,10 +25,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const token = request.cookies.get("goukaku_session")?.value;
+  const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
   const session = token ? await parseSessionToken(token) : null;
 
-  if (!session) {
+  if (!session || !token) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -32,15 +41,18 @@ export async function middleware(request: NextRequest) {
     const isTestSchedulePage =
       pathname === "/admin/tests" || pathname.startsWith("/admin/tests/");
     if (isTestSchedulePage && canViewTestSchedule(session)) {
-      return NextResponse.next();
+      return withRefreshedSession(NextResponse.next(), token);
     }
     if (pathname.startsWith("/api/admin")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-    return NextResponse.redirect(new URL("/maker", request.url));
+    return withRefreshedSession(
+      NextResponse.redirect(new URL("/maker", request.url)),
+      token,
+    );
   }
 
-  return NextResponse.next();
+  return withRefreshedSession(NextResponse.next(), token);
 }
 
 export const config = {

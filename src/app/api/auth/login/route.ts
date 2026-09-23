@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { setSessionCookie, verifyLogin } from "@/lib/auth";
+import { verifyLogin } from "@/lib/auth";
+import {
+  createSessionToken,
+  SESSION_COOKIE_NAME,
+  sessionCookieOptions,
+} from "@/lib/auth-session";
 
 export async function POST(request: Request) {
   const body = (await request.json()) as {
@@ -12,6 +17,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "ログインIDまたはパスワードが違います" }, { status: 401 });
   }
 
-  await setSessionCookie(user);
-  return NextResponse.json({ user });
+  const response = NextResponse.json({ user });
+  response.cookies.set(
+    SESSION_COOKIE_NAME,
+    await createSessionToken(user),
+    sessionCookieOptions(),
+  );
+  return response;
 }

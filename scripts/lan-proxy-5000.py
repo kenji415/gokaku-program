@@ -37,6 +37,35 @@ def _build_target(path: str) -> str:
     return target
 
 
+def _forward_headers(upstream_headers) -> list[tuple[str, str]]:
+    """Set-Cookie は複数あり、Expires にカンマを含むので items() だけだと壊れる。"""
+    forwarded: list[tuple[str, str]] = []
+    for key, value in upstream_headers.items():
+        if key.lower() in HOP_BY_HOP or key.lower() == "set-cookie":
+            continue
+        forwarded.append((key, value))
+
+    cookies = []
+    get_all = getattr(upstream_headers, "get_all", None)
+    if callable(get_all):
+        cookies = get_all("Set-Cookie") or []
+    elif upstream_headers.get("Set-Cookie"):
+        cookies = [upstream_headers.get("Set-Cookie")]
+    for cookie in cookies:
+        forwarded.append(("Set-Cookie", cookie))
+    return forwarded
+
+
+def _build_response(body: bytes, status: int, upstream_headers) -> Response:
+    response = Response(body, status)
+    for key, value in _forward_headers(upstream_headers):
+        if key.lower() == "set-cookie":
+            response.headers.add(key, value)
+        else:
+            response.headers[key] = value
+    return response
+
+
 @app.route("/", defaults={"path": ""}, methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 @app.route("/<path:path>", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 def proxy(path: str):
@@ -57,19 +86,9 @@ def proxy(path: str):
 
     try:
         with urllib.request.urlopen(upstream_request, timeout=120) as upstream:
-            response_headers = [
-                (key, value)
-                for key, value in upstream.headers.items()
-                if key.lower() not in HOP_BY_HOP
-            ]
-            return Response(upstream.read(), upstream.status, response_headers)
+            return _build_response(upstream.read(), upstream.status, upstream.headers)
     except urllib.error.HTTPError as error:
-        response_headers = [
-            (key, value)
-            for key, value in error.headers.items()
-            if key.lower() not in HOP_BY_HOP
-        ]
-        return Response(error.read(), error.code, response_headers)
+        return _build_response(error.read(), error.code, error.headers)
     except Exception as error:  # noqa: BLE001
         return Response(f"Next.js へ接続できません: {error}", status=502, mimetype="text/plain; charset=utf-8")
 

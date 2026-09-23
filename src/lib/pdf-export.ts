@@ -91,20 +91,25 @@ async function exportViewerSheetToPdfWithBrowser(
       typeof params.contentFontSize === "number" && params.contentFontSize > 0
         ? `?contentFontSize=${encodeURIComponent(String(params.contentFontSize))}`
         : "";
-    await page.goto(
+    const response = await page.goto(
       `${params.baseUrl}/programs/${params.sheetId}/print${fontQuery}`,
       {
         waitUntil: "load",
-        timeout: 120_000,
+        timeout: 60_000,
       },
     );
+    if (!response || !response.ok()) {
+      throw new Error(
+        `印刷ページの読み込みに失敗しました (${response?.status() ?? "no response"})`,
+      );
+    }
 
     // B5横（257×182mm）に合わせ、min-h-screen による2枚目の白紙を防ぐ
     await page.setViewport({ width: 972, height: 688, deviceScaleFactor: 1 });
 
     await page.emulateMediaType("print");
 
-    await page.waitForSelector(".program-sheet", { timeout: 120_000 });
+    await page.waitForSelector(".program-sheet", { timeout: 30_000 });
 
     // 印刷用ページを1枚分のサイズに固定し、2枚目の白紙を防ぐ
     await page.evaluate(() => {
@@ -209,17 +214,22 @@ async function exportFinalStretchSheetToPdfWithBrowser(
       httpOnly: true,
     });
 
-    await page.goto(
+    const response = await page.goto(
       `${params.baseUrl}/programs/final-stretch/${params.sheetId}/print`,
       {
         waitUntil: "load",
-        timeout: 120_000,
+        timeout: 60_000,
       },
     );
+    if (!response || !response.ok()) {
+      throw new Error(
+        `印刷ページの読み込みに失敗しました (${response?.status() ?? "no response"})`,
+      );
+    }
 
     await page.setViewport({ width: 972, height: 688, deviceScaleFactor: 1 });
     await page.emulateMediaType("print");
-    await page.waitForSelector(".final-stretch-sheet", { timeout: 120_000 });
+    await page.waitForSelector(".final-stretch-sheet", { timeout: 30_000 });
 
     await page.evaluate(() => {
       const sheet = document.querySelector(".final-stretch-with-editor");

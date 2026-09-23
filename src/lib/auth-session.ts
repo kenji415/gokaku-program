@@ -4,6 +4,28 @@ const decoder = new TextDecoder();
 
 export const SESSION_COOKIE_NAME = "goukaku_session";
 
+/** ログイン状態の最大保持（操作がある限り middleware で延長） */
+export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
+
+export function sessionCookieOptions(): {
+  httpOnly: true;
+  sameSite: "lax";
+  path: "/";
+  maxAge: number;
+  expires: Date;
+  secure: false;
+} {
+  return {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: SESSION_MAX_AGE_SECONDS,
+    expires: new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000),
+    // 社内は HTTP（LAN / 127.0.0.1）なので Secure は付けない
+    secure: false,
+  };
+}
+
 export type SessionUser = {
   id: string;
   name: string;

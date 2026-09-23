@@ -16,7 +16,7 @@ import { studentNameMatchesQuery } from "./student-name";
 import { getStudentTestResultsForIds, getRecentStudentTestResults } from "./test-results";
 import type { RecentTestResult } from "./test-results";
 import type { StudentTestResultInput } from "./test-result-types";
-import { getCachedTestSchedules } from "./test-schedule-cache";
+import { getCachedTestSchedules, invalidateTestScheduleCache } from "./test-schedule-cache";
 import { resolveStudentClassName } from "./student-class-name";
 import { normalizeProgramContentFontSize } from "./program-content-font";
 export type { StudentTestResultInput } from "./test-result-types";
@@ -772,6 +772,12 @@ function recordMonthTestDismissals(
   );
   for (const testId of testIds) {
     if (existing.has(testId)) continue;
+    const schedule = db
+      .select({ id: schema.testSchedules.id })
+      .from(schema.testSchedules)
+      .where(eq(schema.testSchedules.id, testId))
+      .get();
+    if (!schedule) continue;
     db.insert(schema.studentMonthTestDismissals)
       .values({
         id: uuid(),
@@ -804,6 +810,7 @@ function clearMonthTestDismissals(
 /**
  * テストコース対象を月にマージ追加する。
  * 既にテストがあっても追加する。テスト編集で外したもの（dismissal）は復活させない。
+ * 削除済み模試IDはスキップ（キャッシュずれで FK エラーにしない）。
  */
 function mergeCourseTestsForMonth(
   studentId: string,
@@ -830,7 +837,19 @@ function mergeCourseTestsForMonth(
     yearMonth,
     student?.grade,
   );
+  if (filtered.length === 0) return;
+
+  const existingIds = new Set(
+    db
+      .select({ id: schema.testSchedules.id })
+      .from(schema.testSchedules)
+      .where(inArray(schema.testSchedules.id, filtered))
+      .all()
+      .map((row) => row.id),
+  );
+
   for (const testId of filtered) {
+    if (!existingIds.has(testId)) continue;
     db.insert(schema.studentMonthTests)
       .values({
         id: uuid(),
@@ -838,6 +857,7 @@ function mergeCourseTestsForMonth(
         yearMonth,
         testScheduleId: testId,
       })
+      .onConflictDoNothing()
       .run();
   }
 }
@@ -936,6 +956,7 @@ function ensureProgramMonthsForSheet(
   startYearMonth: string,
   studentId: string,
 ) {
+  invalidateTestScheduleCache();
   const db = getDb();
   const student = db
     .select({ grade: schema.students.grade })
@@ -1115,7 +1136,15 @@ export function getProgramSheet(sheetId: string): ProgramSheetData | null {
 
   if (!student || !teacher) return null;
 
-  ensureProgramMonthsForSheet(sheet.id, sheet.startYearMonth, sheet.studentId);
+  try {
+    ensureProgramMonthsForSheet(sheet.id, sheet.startYearMonth, sheet.studentId);
+  } catch (error) {
+    console.error(
+      "[getProgramSheet] ensureProgramMonthsForSheet failed",
+      sheet.id,
+      error,
+    );
+  }
   const months = loadVisibleMonths(
     sheet.id,
     sheet.startYearMonth,
