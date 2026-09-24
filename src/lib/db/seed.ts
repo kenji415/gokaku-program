@@ -21,7 +21,7 @@ export function seedDatabase(db: BetterSQLite3Database<typeof schema>) {
           .run();
       }
     }
-    ensureTestSchedules(db);
+    // 既存DBではテスト日程を再投入しない。消した模試が起動のたびに戻るのを防ぐ。
     return;
   }
 
@@ -132,13 +132,6 @@ const EXTRA_TESTS = [
     testDate: "7/18",
     displayText: "07/18 7月度マンスリーテスト",
     yearMonth: "2026-07",
-  },
-  {
-    grade: "6年",
-    testName: "8月度マンスリーテスト",
-    testDate: "8/30",
-    displayText: "08/30 8月度マンスリーテスト",
-    yearMonth: "2026-08",
   },
   {
     grade: "6年",

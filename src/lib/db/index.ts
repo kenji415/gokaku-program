@@ -352,7 +352,66 @@ function ensureSchema(sqlite: Database.Database) {
   }
 
   runTestScheduleRepair(sqlite);
+  removeIncorrectGrade6SapixAugustMonthly(sqlite);
   invalidateTestScheduleCache();
+}
+
+/**
+ * 6年SAPIX「08/30 8月度マンスリーテスト」は誤った初期データ。
+ * 削除しても起動時の再投入でプログラムシートに戻っていたため、紐づけごと除く。
+ * 正しい「08/27」は対象外。
+ */
+function removeIncorrectGrade6SapixAugustMonthly(
+  sqlite: Database.Database,
+): boolean {
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT)`);
+  const key = "remove_grade6_sapix_aug_monthly_0830";
+  const done = sqlite
+    .prepare(`SELECT value FROM app_meta WHERE key = ?`)
+    .get(key) as { value: string } | undefined;
+  if (done) return false;
+
+  const rows = sqlite
+    .prepare(
+      `SELECT id FROM test_schedules
+       WHERE grade = '6年'
+         AND IFNULL(cram_school, '') = 'SAPIX'
+         AND test_name = '8月度マンスリーテスト'
+         AND (
+           display_text = '08/30 8月度マンスリーテスト'
+           OR test_date IN ('8/30', '08/30')
+         )`,
+    )
+    .all() as { id: string }[];
+
+  const deleteResults = sqlite.prepare(
+    `DELETE FROM student_test_results WHERE test_schedule_id = ?`,
+  );
+  const deleteLinks = sqlite.prepare(
+    `DELETE FROM student_month_tests WHERE test_schedule_id = ?`,
+  );
+  const deleteDismissals = sqlite.prepare(
+    `DELETE FROM student_month_test_dismissals WHERE test_schedule_id = ?`,
+  );
+  const deleteProgramLinks = sqlite.prepare(
+    `DELETE FROM program_month_tests WHERE test_schedule_id = ?`,
+  );
+  const deleteSchedule = sqlite.prepare(
+    `DELETE FROM test_schedules WHERE id = ?`,
+  );
+
+  const apply = sqlite.transaction(() => {
+    for (const row of rows) {
+      deleteResults.run(row.id);
+      deleteLinks.run(row.id);
+      deleteDismissals.run(row.id);
+      deleteProgramLinks.run(row.id);
+      deleteSchedule.run(row.id);
+    }
+    sqlite.prepare(`INSERT INTO app_meta (key, value) VALUES (?, '1')`).run(key);
+  });
+  apply();
+  return rows.length > 0;
 }
 
 /** 指導開始時の塾・校舎・クラスを現状の基本情報で1回だけシートに固定する */
@@ -756,6 +815,9 @@ export function getDb() {
     // ホットリロード後や外部 DB 差し替え後でも担当スロット移行を再適用
     migrateStudentAssignmentsMultiTeacher(globalForDb.db.sqlite);
     migrateStudentAssignmentSlots(globalForDb.db.sqlite);
+    if (removeIncorrectGrade6SapixAugustMonthly(globalForDb.db.sqlite)) {
+      invalidateTestScheduleCache();
+    }
   }
   return globalForDb.db.drizzle;
 }
