@@ -875,10 +875,21 @@ body {
     background: white !important;
   }
 
+  html:has(.course-proposal-print-page),
+  body:has(.course-proposal-print-page) {
+    width: var(--course-proposal-sheet-w) !important;
+    height: var(--course-proposal-sheet-h) !important;
+    max-width: var(--course-proposal-sheet-w) !important;
+    max-height: var(--course-proposal-sheet-h) !important;
+    min-height: 0 !important;
+  }
+
   .course-proposal-print-page {
     min-height: 0 !important;
     width: var(--course-proposal-sheet-w) !important;
     height: var(--course-proposal-sheet-h) !important;
+    max-width: none !important;
+    margin: 0 !important;
     background: white !important;
   }
 
@@ -2006,6 +2017,8 @@ body {
   .course-proposal-sheet {
     width: var(--course-proposal-sheet-w) !important;
     height: var(--course-proposal-sheet-h) !important;
+    max-width: none !important;
+    margin: 0 !important;
     border: none !important;
     box-shadow: none !important;
     page-break-after: avoid;

@@ -57,7 +57,7 @@ export default async function CourseProposalSheetPrintPage({
     <>
       <style
         dangerouslySetInnerHTML={{
-          __html: `@page { size: B5 portrait; margin: 0; }`,
+          __html: `@page { size: 176mm 250mm; margin: 0; }`,
         }}
       />
       <CourseProposalSheetPrintView sheet={sheet} />

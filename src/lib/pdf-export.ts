@@ -318,6 +318,7 @@ export async function closePdfBrowser(browser: Browser | undefined): Promise<voi
 
 const COURSE_PROPOSAL_PDF_OPTIONS = {
   printBackground: true,
+  preferCSSPageSize: true,
   width: "176mm",
   height: "250mm",
   margin: { top: "0", right: "0", bottom: "0", left: "0" },
@@ -364,20 +365,28 @@ async function exportCourseProposalSheetToPdfWithBrowser(
       if (!sheet) throw new Error("course proposal sheet not found");
       document.body.replaceChildren(sheet);
 
+      const pageStyle = document.createElement("style");
+      pageStyle.textContent = "@page { size: 176mm 250mm; margin: 0; }";
+      document.head.appendChild(pageStyle);
+
       for (const element of [document.documentElement, document.body]) {
         const node = element as HTMLElement;
-        node.style.margin = "0";
-        node.style.padding = "0";
-        node.style.width = "176mm";
-        node.style.height = "250mm";
-        node.style.minHeight = "0";
-        node.style.maxHeight = "250mm";
-        node.style.overflow = "hidden";
-        node.style.background = "white";
+        node.style.setProperty("margin", "0", "important");
+        node.style.setProperty("padding", "0", "important");
+        node.style.setProperty("width", "176mm", "important");
+        node.style.setProperty("height", "250mm", "important");
+        node.style.setProperty("min-height", "0", "important");
+        node.style.setProperty("max-width", "176mm", "important");
+        node.style.setProperty("max-height", "250mm", "important");
+        node.style.setProperty("overflow", "hidden", "important");
+        node.style.setProperty("background", "white", "important");
       }
 
       const sheetEl = sheet as HTMLElement;
-      sheetEl.style.margin = "0";
+      sheetEl.style.setProperty("width", "176mm", "important");
+      sheetEl.style.setProperty("height", "250mm", "important");
+      sheetEl.style.setProperty("max-width", "none", "important");
+      sheetEl.style.setProperty("margin", "0", "important");
       sheetEl.style.pageBreakAfter = "auto";
       sheetEl.style.breakAfter = "auto";
 
