@@ -1476,10 +1476,13 @@ export function monthContentFilled(content: string | null | undefined): boolean 
   return Boolean(content?.trim());
 }
 
+/** 開始月以降で内容が空の月。6年生の8月〜1月枠では、開始月より前の空欄は対象外。 */
 export function getUnfilledMonthLabels(
-  months: { monthLabel: string; content: string }[],
+  months: { yearMonth: string; monthLabel: string; content: string }[],
+  startYearMonth: string,
 ): string[] {
   return months
+    .filter((month) => month.yearMonth >= startYearMonth)
     .filter((month) => !monthContentFilled(month.content))
     .map((month) => month.monthLabel);
 }
@@ -1514,8 +1517,11 @@ export function getBulkPdfStudentStatuses(
 
   return assignments.map((assignment) => {
     const slots = buildMonthSlots(startYearMonth, assignment.grade);
+    const requiredSlots = slots.filter(
+      (slot) => slot.yearMonth >= startYearMonth,
+    );
     const yearMonths = slots.map((slot) => slot.yearMonth);
-    const allLabels = slots.map((slot) => slot.monthLabel);
+    const allLabels = requiredSlots.map((slot) => slot.monthLabel);
 
     const sheet = consolidateProgramSheets(
       assignment.studentId,
@@ -1543,7 +1549,7 @@ export function getBulkPdfStudentStatuses(
       monthRows.map((month) => [month.yearMonth, month]),
     );
 
-    const unfilledMonthLabels = slots
+    const unfilledMonthLabels = requiredSlots
       .filter(
         (slot) =>
           !monthContentFilled(monthByYearMonth.get(slot.yearMonth)?.content),

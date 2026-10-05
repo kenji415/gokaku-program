@@ -112,7 +112,10 @@ async function processBulkPdfStudent(params: {
       startYearMonth,
     });
 
-    const unfilledLabels = getUnfilledMonthLabels(sheet.months);
+    const unfilledLabels = getUnfilledMonthLabels(
+      sheet.months,
+      sheet.startYearMonth,
+    );
     if (unfilledLabels.length > 0) {
       failed.push({
         studentId,

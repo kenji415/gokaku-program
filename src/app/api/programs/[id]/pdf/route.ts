@@ -4,11 +4,7 @@ import { getSession } from "@/lib/auth";
 import { SESSION_COOKIE_NAME } from "@/lib/auth-session";
 import { buildPdfFilename } from "@/lib/months";
 import { pdfDownloadResponse } from "@/lib/pdf-download-response";
-import {
-  disposePdfBrowser,
-  renderProgramSheetPdf,
-  resolvePdfBaseUrl,
-} from "@/lib/pdf-export";
+import { renderProgramSheetPdf, resolvePdfBaseUrl } from "@/lib/pdf-export";
 import { formatUnfilledMonthsError } from "@/lib/pdf-sheet-utils";
 import {
   getProgramSheet,
@@ -57,7 +53,10 @@ export async function POST(
     // body なしでもシート保存値で出力
   }
 
-  const unfilledLabels = getUnfilledMonthLabels(sheet.months);
+  const unfilledLabels = getUnfilledMonthLabels(
+    sheet.months,
+    sheet.startYearMonth,
+  );
   if (unfilledLabels.length > 0) {
     return NextResponse.json(
       { error: formatUnfilledMonthsError(unfilledLabels) },
@@ -80,7 +79,6 @@ export async function POST(
     teacherName: sheet.teacher.name,
   });
 
-  let browser;
   try {
     const result = await renderProgramSheetPdf({
       sheetId: id,
@@ -89,7 +87,6 @@ export async function POST(
       baseUrl: resolvePdfBaseUrl(request),
       contentFontSize,
     });
-    browser = result.browser;
     const pdfExportedAt = recordProgramSheetPdfExport(id);
 
     return pdfDownloadResponse(result.buffer, result.fileName, {
@@ -103,7 +100,5 @@ export async function POST(
       },
       { status: 500 },
     );
-  } finally {
-    await disposePdfBrowser(browser);
   }
 }

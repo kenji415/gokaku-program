@@ -10,7 +10,6 @@ import {
 import { buildFinalStretchPdfFilename } from "@/lib/months";
 import { pdfDownloadResponse } from "@/lib/pdf-download-response";
 import {
-  disposePdfBrowser,
   renderFinalStretchSheetPdf,
   resolvePdfBaseUrl,
 } from "@/lib/pdf-export";
@@ -58,7 +57,6 @@ export async function POST(
     teacherName: sheet.teacher.name,
   });
 
-  let browser;
   try {
     const result = await renderFinalStretchSheetPdf({
       sheetId: id,
@@ -66,7 +64,6 @@ export async function POST(
       sessionToken,
       baseUrl: resolvePdfBaseUrl(request),
     });
-    browser = result.browser;
     const pdfExportedAt = recordFinalStretchPdfExport(id);
 
     return pdfDownloadResponse(result.buffer, result.fileName, {
@@ -80,7 +77,5 @@ export async function POST(
       },
       { status: 500 },
     );
-  } finally {
-    await disposePdfBrowser(browser);
   }
 }

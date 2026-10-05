@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import puppeteer, { type Browser } from "puppeteer";
+import puppeteer, { type Browser, type Page } from "puppeteer";
 import { SESSION_COOKIE_NAME } from "./auth-session";
 import {
   resolveFinalStretchExportDir,
@@ -17,6 +17,43 @@ function resolvePdfServerBaseUrl(): string {
 
 export function resolvePdfBaseUrl(_request?: Request): string {
   return resolvePdfServerBaseUrl();
+}
+
+type SharedPdfBrowserState = {
+  browser?: Browser;
+  launching?: Promise<Browser>;
+  shutdownHooked?: boolean;
+};
+
+const globalForPdf = globalThis as typeof globalThis & {
+  __gokakuSharedPdfBrowser?: SharedPdfBrowserState;
+};
+
+function sharedPdfBrowserState(): SharedPdfBrowserState {
+  globalForPdf.__gokakuSharedPdfBrowser ??= {};
+  return globalForPdf.__gokakuSharedPdfBrowser;
+}
+
+function forgetPdfBrowser(browser?: Browser): void {
+  const state = sharedPdfBrowserState();
+  if (!browser || state.browser === browser) {
+    state.browser = undefined;
+  }
+}
+
+function ensurePdfBrowserShutdownHook(): void {
+  const state = sharedPdfBrowserState();
+  if (state.shutdownHooked) return;
+  state.shutdownHooked = true;
+  process.once("exit", () => {
+    const browser = state.browser;
+    state.browser = undefined;
+    try {
+      browser?.process()?.kill();
+    } catch {
+      // プロセス終了中は失敗しても続行する
+    }
+  });
 }
 
 async function launchPdfBrowser(): Promise<Browser> {
@@ -37,6 +74,73 @@ async function launchPdfBrowser(): Promise<Browser> {
   });
 }
 
+/** 起動済みの Chrome を返す。落ちていれば起動し直す。 */
+async function acquirePdfBrowser(): Promise<Browser> {
+  ensurePdfBrowserShutdownHook();
+  const state = sharedPdfBrowserState();
+  if (state.browser?.connected) return state.browser;
+
+  if (!state.launching) {
+    state.browser = undefined;
+    state.launching = launchPdfBrowser()
+      .then((browser) => {
+        state.browser = browser;
+        browser.once("disconnected", () => {
+          forgetPdfBrowser(browser);
+        });
+        return browser;
+      })
+      .finally(() => {
+        state.launching = undefined;
+      });
+  }
+
+  return state.launching;
+}
+
+async function resolvePdfBrowser(existing?: Browser): Promise<Browser> {
+  if (existing?.connected) return existing;
+  return acquirePdfBrowser();
+}
+
+/** 1枚ごとに Cookie を分ける。Chrome 本体は使い回す。 */
+async function withIsolatedPdfPage<T>(
+  browser: Browser,
+  run: (page: Page) => Promise<T>,
+): Promise<T> {
+  const context = await browser.createBrowserContext();
+  try {
+    const page = await context.newPage();
+    return await run(page);
+  } finally {
+    await context.close().catch(() => undefined);
+  }
+}
+
+/**
+ * 印刷 HTML を開くあいだだけ JS を止める。
+ * 開発時の hydration 不一致でシート全体を描き直すと、PDF が遅くなる。
+ * 開いたあとは evaluate できるよう JS を戻す。読み込み済みの script は再実行されない。
+ */
+async function gotoPrintPage(
+  page: Page,
+  url: string,
+  waitUntil: "load" | "domcontentloaded",
+): Promise<Awaited<ReturnType<Page["goto"]>>> {
+  await page.setJavaScriptEnabled(false);
+  try {
+    return await page.goto(url, { waitUntil, timeout: 60_000 });
+  } finally {
+    await page.setJavaScriptEnabled(true);
+  }
+}
+
+async function waitForPrintFonts(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+  });
+}
+
 /** Puppeteer の Chrome をバックグラウンドで終了（レスポンス送信をブロックしない） */
 export function releasePdfBrowser(browser?: Browser): void {
   if (!browser) return;
@@ -46,6 +150,7 @@ export function releasePdfBrowser(browser?: Browser): void {
 /** Puppeteer の Chrome を確実に終了させる */
 export async function disposePdfBrowser(browser?: Browser): Promise<void> {
   if (!browser) return;
+  forgetPdfBrowser(browser);
   try {
     const pages = await browser.pages();
     await Promise.all(pages.map((page) => page.close().catch(() => undefined)));
@@ -76,8 +181,7 @@ async function exportViewerSheetToPdfWithBrowser(
     contentFontSize?: number;
   },
 ): Promise<Buffer> {
-  const page = await browser.newPage();
-  try {
+  return withIsolatedPdfPage(browser, async (page) => {
     await page.setCacheEnabled(false);
     await page.setCookie({
       name: SESSION_COOKIE_NAME,
@@ -91,18 +195,17 @@ async function exportViewerSheetToPdfWithBrowser(
       typeof params.contentFontSize === "number" && params.contentFontSize > 0
         ? `?contentFontSize=${encodeURIComponent(String(params.contentFontSize))}`
         : "";
-    const response = await page.goto(
+    const response = await gotoPrintPage(
+      page,
       `${params.baseUrl}/programs/${params.sheetId}/print${fontQuery}`,
-      {
-        waitUntil: "load",
-        timeout: 60_000,
-      },
+      "load",
     );
     if (!response || !response.ok()) {
       throw new Error(
         `印刷ページの読み込みに失敗しました (${response?.status() ?? "no response"})`,
       );
     }
+    await waitForPrintFonts(page);
 
     // B5横（257×182mm）に合わせ、min-h-screen による2枚目の白紙を防ぐ
     await page.setViewport({ width: 972, height: 688, deviceScaleFactor: 1 });
@@ -147,9 +250,7 @@ async function exportViewerSheetToPdfWithBrowser(
 
     const pdfBuffer = await page.pdf(PROGRAM_SHEET_PDF_OPTIONS);
     return Buffer.from(pdfBuffer);
-  } finally {
-    await page.close();
-  }
+  });
 }
 
 export async function renderProgramSheetPdf(params: {
@@ -163,8 +264,7 @@ export async function renderProgramSheetPdf(params: {
 }): Promise<{ buffer: Buffer; fileName: string; browser: Browser }> {
   const fileName = `${sanitizePdfFilename(params.filenameBase)}.pdf`;
   const baseUrl = params.baseUrl ?? resolvePdfServerBaseUrl();
-  const browser = params.browser ?? (await launchPdfBrowser());
-  const ownsBrowser = !params.browser;
+  const browser = await resolvePdfBrowser(params.browser);
 
   try {
     const buffer = await exportViewerSheetToPdfWithBrowser(browser, {
@@ -175,7 +275,7 @@ export async function renderProgramSheetPdf(params: {
     });
     return { buffer, fileName, browser };
   } catch (error) {
-    if (ownsBrowser) await disposePdfBrowser(browser);
+    if (!browser.connected) forgetPdfBrowser(browser);
     throw error;
   }
 }
@@ -203,8 +303,7 @@ async function exportFinalStretchSheetToPdfWithBrowser(
     baseUrl: string;
   },
 ): Promise<Buffer> {
-  const page = await browser.newPage();
-  try {
+  return withIsolatedPdfPage(browser, async (page) => {
     await page.setCacheEnabled(false);
     await page.setCookie({
       name: SESSION_COOKIE_NAME,
@@ -214,18 +313,17 @@ async function exportFinalStretchSheetToPdfWithBrowser(
       httpOnly: true,
     });
 
-    const response = await page.goto(
+    const response = await gotoPrintPage(
+      page,
       `${params.baseUrl}/programs/final-stretch/${params.sheetId}/print`,
-      {
-        waitUntil: "load",
-        timeout: 60_000,
-      },
+      "load",
     );
     if (!response || !response.ok()) {
       throw new Error(
         `印刷ページの読み込みに失敗しました (${response?.status() ?? "no response"})`,
       );
     }
+    await waitForPrintFonts(page);
 
     await page.setViewport({ width: 972, height: 688, deviceScaleFactor: 1 });
     await page.emulateMediaType("print");
@@ -266,9 +364,7 @@ async function exportFinalStretchSheetToPdfWithBrowser(
 
     const pdfBuffer = await page.pdf(PROGRAM_SHEET_PDF_OPTIONS);
     return Buffer.from(pdfBuffer);
-  } finally {
-    await page.close();
-  }
+  });
 }
 
 export async function renderFinalStretchSheetPdf(params: {
@@ -281,8 +377,7 @@ export async function renderFinalStretchSheetPdf(params: {
 }): Promise<{ buffer: Buffer; fileName: string; browser: Browser }> {
   const fileName = `${sanitizePdfFilename(params.filenameBase)}.pdf`;
   const baseUrl = params.baseUrl ?? resolvePdfServerBaseUrl();
-  const browser = params.browser ?? (await launchPdfBrowser());
-  const ownsBrowser = !params.browser;
+  const browser = await resolvePdfBrowser(params.browser);
 
   try {
     const buffer = await exportFinalStretchSheetToPdfWithBrowser(browser, {
@@ -292,7 +387,7 @@ export async function renderFinalStretchSheetPdf(params: {
     });
     return { buffer, fileName, browser };
   } catch (error) {
-    if (ownsBrowser) await disposePdfBrowser(browser);
+    if (!browser.connected) forgetPdfBrowser(browser);
     throw error;
   }
 }
@@ -333,8 +428,7 @@ async function exportCourseProposalSheetToPdfWithBrowser(
     baseUrl: string;
   },
 ): Promise<Buffer> {
-  const page = await browser.newPage();
-  try {
+  return withIsolatedPdfPage(browser, async (page) => {
     await page.setCacheEnabled(false);
     await page.setCookie({
       name: SESSION_COOKIE_NAME,
@@ -344,17 +438,16 @@ async function exportCourseProposalSheetToPdfWithBrowser(
       httpOnly: true,
     });
 
-    await page.goto(
+    await gotoPrintPage(
+      page,
       `${params.baseUrl}/programs/course-proposal/${params.sheetId}/print`,
-      {
-        waitUntil: "domcontentloaded",
-        timeout: 60_000,
-      },
+      "domcontentloaded",
     );
 
     if (page.url().includes("/login")) {
       throw new Error("印刷ページの認証に失敗しました");
     }
+    await waitForPrintFonts(page);
 
     await page.setViewport({ width: 665, height: 945, deviceScaleFactor: 1 });
     await page.emulateMediaType("print");
@@ -415,9 +508,7 @@ async function exportCourseProposalSheetToPdfWithBrowser(
 
     const pdfBuffer = await page.pdf(COURSE_PROPOSAL_PDF_OPTIONS);
     return Buffer.from(pdfBuffer);
-  } finally {
-    await page.close();
-  }
+  });
 }
 
 export async function renderCourseProposalSheetPdf(params: {
@@ -430,8 +521,7 @@ export async function renderCourseProposalSheetPdf(params: {
 }): Promise<{ buffer: Buffer; fileName: string; browser: Browser }> {
   const fileName = `${sanitizePdfFilename(params.filenameBase)}.pdf`;
   const baseUrl = params.baseUrl ?? resolvePdfServerBaseUrl();
-  const browser = params.browser ?? (await launchPdfBrowser());
-  const ownsBrowser = !params.browser;
+  const browser = await resolvePdfBrowser(params.browser);
 
   try {
     const buffer = await exportCourseProposalSheetToPdfWithBrowser(browser, {
@@ -441,7 +531,7 @@ export async function renderCourseProposalSheetPdf(params: {
     });
     return { buffer, fileName, browser };
   } catch (error) {
-    if (ownsBrowser) await disposePdfBrowser(browser);
+    if (!browser.connected) forgetPdfBrowser(browser);
     throw error;
   }
 }

@@ -250,7 +250,7 @@ export function BulkPdfExport({ assignments }: Props) {
         <div className="mb-4">
           <h2 className="text-lg font-semibold text-gray-900">PDF一括作成</h2>
           <p className="mt-1 text-xs text-gray-500">
-            卒塾生を除く担当生徒のプログラムシートをPDFで一括作成し、ダウンロードフォルダに保存します。同名ファイルは上書きされます。月のボックスが空欄の生徒はスキップされ、「〇月未入力」と表示されます。作成したPDFの日付を記録します。
+            卒塾生を除く担当生徒のプログラムシートをPDFで一括作成し、ダウンロードフォルダに保存します。同名ファイルは上書きされます。開始月以降の月ボックスが空欄の生徒はスキップされ、「〇月未入力」と表示されます。開始月より前の空欄は出力を止めません。作成したPDFの日付を記録します。
           </p>
         </div>
 

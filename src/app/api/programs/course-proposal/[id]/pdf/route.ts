@@ -11,7 +11,6 @@ import { buildCourseProposalPdfFilename } from "@/lib/months";
 import { pdfDownloadResponse } from "@/lib/pdf-download-response";
 import {
   renderCourseProposalSheetPdf,
-  releasePdfBrowser,
   resolvePdfBaseUrl,
 } from "@/lib/pdf-export";
 
@@ -57,7 +56,6 @@ export async function POST(
     gender: sheet.student.gender,
   });
 
-  let browser;
   try {
     const result = await renderCourseProposalSheetPdf({
       sheetId: id,
@@ -65,14 +63,10 @@ export async function POST(
       sessionToken,
       baseUrl: resolvePdfBaseUrl(request),
     });
-    browser = result.browser;
     const pdfExportedAt = recordCourseProposalPdfExport(id);
-    const response = pdfDownloadResponse(result.buffer, result.fileName, {
+    return pdfDownloadResponse(result.buffer, result.fileName, {
       "X-Pdf-Exported-At": pdfExportedAt,
     });
-    releasePdfBrowser(browser);
-    browser = undefined;
-    return response;
   } catch (error) {
     return NextResponse.json(
       {
@@ -81,7 +75,5 @@ export async function POST(
       },
       { status: 500 },
     );
-  } finally {
-    releasePdfBrowser(browser);
   }
 }
