@@ -82,7 +82,7 @@ export function CourseProposalSheetPrintView({
                     </div>
                     <div className="course-proposal-subject-meta-cell">
                       <span>担当講師</span>
-                      <span className="course-proposal-subject-meta-value">
+                      <span className="course-proposal-subject-meta-value course-proposal-subject-meta-value--teacher">
                         {data.teacherName}
                       </span>
                     </div>

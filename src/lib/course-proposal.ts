@@ -17,6 +17,7 @@ import {
 import { resolveProgramSheetDisplayCampus, getTeacherAssignments } from "./programs";
 import { getStudentAssignments } from "./students";
 import { teacherCanAccessStudent } from "./test-results";
+import { teacherSurname } from "./guidance-policy";
 
 export {
   COURSE_PROPOSAL_SEASON_LABELS,
@@ -120,22 +121,36 @@ function serializeSubjectsJson(data: StoredCourseProposal): string {
   return JSON.stringify(data);
 }
 
+/** 1人はそのまま。2人以上は名字だけを「山田 / 海田」と並べる */
+function formatCourseProposalTeacherNames(names: string[]): string {
+  const unique = [...new Set(names.map((name) => name.trim()).filter(Boolean))];
+  if (unique.length === 0) return "";
+  if (unique.length === 1) return unique[0];
+  return unique.map((name) => teacherSurname(name)).join(" / ");
+}
+
 function defaultTeacherNamesForStudent(
   studentId: string,
 ): Partial<Record<string, string>> {
   const assignments = getStudentAssignments(studentId);
-  const names: Partial<Record<CourseProposalSubject, string>> = {};
+  const names: Partial<Record<CourseProposalSubject, string[]>> = {};
 
   // getStudentAssignments は slot 昇順
   for (const assignment of assignments) {
     const teacherName = assignment.teacherName?.trim() ?? "";
     if (!teacherName) continue;
     const subject = assignment.subject as CourseProposalSubject;
-    const prev = names[subject]?.trim();
-    names[subject] = prev ? `${prev}　${teacherName}` : teacherName;
+    const list = names[subject] ?? [];
+    if (!list.includes(teacherName)) list.push(teacherName);
+    names[subject] = list;
   }
 
-  return names;
+  return Object.fromEntries(
+    Object.entries(names).map(([subject, list]) => [
+      subject,
+      formatCourseProposalTeacherNames(list),
+    ]),
+  );
 }
 
 function applyAssignmentTeacherNames(

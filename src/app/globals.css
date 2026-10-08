@@ -1983,6 +1983,10 @@ body {
   line-height: 1.2;
 }
 
+.course-proposal-subject-meta-value--teacher {
+  font-size: 10.5px;
+}
+
 .course-proposal-subject-meta-cell--count .course-proposal-subject-meta-input {
   text-align: right;
   font-size: 12px;
