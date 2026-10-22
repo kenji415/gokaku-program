@@ -9,11 +9,24 @@ import {
 
 export type FinalStretchPasteField = "measure" | "unitTheme" | "detail";
 
-const PASTE_FIELDS: FinalStretchPasteField[] = [
+export const FINAL_STRETCH_PASTE_FIELDS: readonly FinalStretchPasteField[] = [
   "measure",
   "unitTheme",
   "detail",
 ];
+
+export type FinalStretchCellRef = {
+  rowId: string;
+  field: FinalStretchPasteField;
+};
+
+export function isFinalStretchPasteField(
+  value: string | undefined,
+): value is FinalStretchPasteField {
+  return (
+    value === "measure" || value === "unitTheme" || value === "detail"
+  );
+}
 
 function rowsForMonth(rows: FinalStretchRowData[], monthKey: FinalStretchMonthKey) {
   return rows
@@ -28,13 +41,101 @@ export function flatFinalStretchRows(
 }
 
 export function parsePastedFinalStretchGrid(text: string): string[][] {
-  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trimEnd();
+  const normalized = text
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/\n+$/g, "");
   if (!normalized) return [];
 
-  return normalized
-    .split("\n")
-    .map((line) => line.split("\t"))
-    .filter((cols) => !(cols.length === 1 && cols[0].trim() === ""));
+  return normalized.split("\n").map((line) => line.split("\t"));
+}
+
+export type FinalStretchSelectionBounds = {
+  rowStart: number;
+  rowEnd: number;
+  fieldStart: number;
+  fieldEnd: number;
+  flat: FinalStretchRowData[];
+};
+
+export function getFinalStretchSelectionBounds(
+  rows: FinalStretchRowData[],
+  anchor: FinalStretchCellRef,
+  focus: FinalStretchCellRef,
+): FinalStretchSelectionBounds | null {
+  const flat = flatFinalStretchRows(rows);
+  const anchorRow = flat.findIndex((row) => row.id === anchor.rowId);
+  const focusRow = flat.findIndex((row) => row.id === focus.rowId);
+  const anchorField = FINAL_STRETCH_PASTE_FIELDS.indexOf(anchor.field);
+  const focusField = FINAL_STRETCH_PASTE_FIELDS.indexOf(focus.field);
+  if (anchorRow < 0 || focusRow < 0 || anchorField < 0 || focusField < 0) {
+    return null;
+  }
+
+  return {
+    rowStart: Math.min(anchorRow, focusRow),
+    rowEnd: Math.max(anchorRow, focusRow),
+    fieldStart: Math.min(anchorField, focusField),
+    fieldEnd: Math.max(anchorField, focusField),
+    flat,
+  };
+}
+
+export function finalStretchSelectionToText(
+  rows: FinalStretchRowData[],
+  anchor: FinalStretchCellRef,
+  focus: FinalStretchCellRef,
+): string | null {
+  const bounds = getFinalStretchSelectionBounds(rows, anchor, focus);
+  if (!bounds) return null;
+
+  const lines: string[] = [];
+  for (let rowIndex = bounds.rowStart; rowIndex <= bounds.rowEnd; rowIndex += 1) {
+    const row = bounds.flat[rowIndex];
+    const columns: string[] = [];
+    for (
+      let fieldIndex = bounds.fieldStart;
+      fieldIndex <= bounds.fieldEnd;
+      fieldIndex += 1
+    ) {
+      columns.push(row[FINAL_STRETCH_PASTE_FIELDS[fieldIndex]] ?? "");
+    }
+    lines.push(columns.join("\t"));
+  }
+  return lines.join("\n");
+}
+
+/** 範囲内のセルを空にする。変化がなければ null */
+export function clearFinalStretchSelection(
+  rows: FinalStretchRowData[],
+  anchor: FinalStretchCellRef,
+  focus: FinalStretchCellRef,
+): FinalStretchRowData[] | null {
+  const bounds = getFinalStretchSelectionBounds(rows, anchor, focus);
+  if (!bounds) return null;
+
+  const updates = new Map<string, FinalStretchRowData>();
+  let changed = false;
+
+  for (let rowIndex = bounds.rowStart; rowIndex <= bounds.rowEnd; rowIndex += 1) {
+    const source = bounds.flat[rowIndex];
+    const next = { ...source };
+    for (
+      let fieldIndex = bounds.fieldStart;
+      fieldIndex <= bounds.fieldEnd;
+      fieldIndex += 1
+    ) {
+      const field = FINAL_STRETCH_PASTE_FIELDS[fieldIndex];
+      if (next[field] !== "") {
+        next[field] = "";
+        changed = true;
+      }
+    }
+    updates.set(source.id, next);
+  }
+
+  if (!changed) return null;
+  return rows.map((row) => updates.get(row.id) ?? row);
 }
 
 export function isFinalStretchGridPaste(text: string): boolean {
@@ -103,7 +204,7 @@ export function applyFinalStretchPaste(
 ): FinalStretchRowData[] {
   if (grid.length === 0) return rows;
 
-  const startFieldIndex = PASTE_FIELDS.indexOf(startField);
+  const startFieldIndex = FINAL_STRETCH_PASTE_FIELDS.indexOf(startField);
   if (startFieldIndex < 0) return rows;
 
   let flat = flatFinalStretchRows(rows);
@@ -129,8 +230,9 @@ export function applyFinalStretchPaste(
       columnIndex += 1
     ) {
       const fieldIndex = startFieldIndex + columnIndex;
-      if (fieldIndex >= PASTE_FIELDS.length) break;
-      updated[PASTE_FIELDS[fieldIndex]] = pastedColumns[columnIndex]?.trim() ?? "";
+      if (fieldIndex >= FINAL_STRETCH_PASTE_FIELDS.length) break;
+      updated[FINAL_STRETCH_PASTE_FIELDS[fieldIndex]] =
+        pastedColumns[columnIndex]?.trim() ?? "";
     }
 
     rowMap.set(targetRow.id, updated);

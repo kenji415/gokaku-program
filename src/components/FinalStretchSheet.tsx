@@ -21,6 +21,7 @@ import {
   parsePastedFinalStretchGrid,
   type FinalStretchPasteField,
 } from "@/lib/final-stretch-paste";
+import { useFinalStretchCellSelection } from "@/hooks/use-final-stretch-cell-selection";
 import { formatStudentDisplayName } from "@/lib/months";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { v4 as uuid } from "uuid";
@@ -103,6 +104,19 @@ export function FinalStretchSheet({
   onColumnWidthsChange,
 }: Props) {
   const tableRef = useRef<HTMLTableElement>(null);
+  const {
+    cellDragActive,
+    hasCellSelection,
+    isCellSelected,
+    isCellActive,
+    startCellPointerDown,
+    guardRangeFocus,
+  } = useFinalStretchCellSelection({
+    editable,
+    rows: sheet.rows,
+    onRowsChange,
+    tableRef,
+  });
   const resizeDragRef = useRef<ColumnResizeDrag | null>(null);
   const [columnResizeDrag, setColumnResizeDrag] = useState<ColumnResizeDrag | null>(
     null,
@@ -176,7 +190,7 @@ export function FinalStretchSheet({
   };
 
   const handleTablePaste = (event: React.ClipboardEvent<HTMLTableElement>) => {
-    if (!onRowsChange) return;
+    if (!onRowsChange || hasCellSelection) return;
 
     const active = document.activeElement;
     if (
@@ -272,13 +286,26 @@ export function FinalStretchSheet({
     };
   }, [columnResizeDrag, endColumnResize, handleColumnResizeMove]);
 
+  const dataCellClass = (
+    rowId: string,
+    field: FinalStretchPasteField,
+    className: string,
+  ) =>
+    [
+      className,
+      isCellSelected(rowId, field) ? "final-stretch-cell--selected" : "",
+      isCellActive(rowId, field) ? "final-stretch-cell--active" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
   const sheetDate = formatSheetDate(new Date().toISOString());
 
   return (
     <div>
       <div className="final-stretch-with-editor">
         <div
-          className={`final-stretch-sheet text-gray-900${columnResizeDrag ? " final-stretch-sheet--col-resizing" : ""}`}
+          className={`final-stretch-sheet text-gray-900${columnResizeDrag ? " final-stretch-sheet--col-resizing" : ""}${cellDragActive ? " final-stretch-sheet--cell-selecting" : ""}`}
         >
           <div className="final-stretch-sheet-header-bg" aria-hidden />
           <header
@@ -364,6 +391,7 @@ export function FinalStretchSheet({
 
               <table
                 ref={tableRef}
+                tabIndex={editable ? -1 : undefined}
                 className="final-stretch-grid"
                 onPaste={editable ? handleTablePaste : undefined}
               >
@@ -463,7 +491,12 @@ export function FinalStretchSheet({
                             {month.label}
                           </td>
                         ) : null}
-                        <td className="final-stretch-col-measure">
+                        <td
+                          className={dataCellClass(row.id, "measure", "final-stretch-col-measure")}
+                          data-row-id={row.id}
+                          data-field="measure"
+                          onPointerDown={editable ? startCellPointerDown : undefined}
+                        >
                           {editable ? (
                             <input
                               type="text"
@@ -474,6 +507,7 @@ export function FinalStretchSheet({
                               onChange={(e) =>
                                 updateRow(row.id, "measure", e.target.value)
                               }
+                              onFocus={guardRangeFocus}
                               onPaste={(event) =>
                                 handleCellPaste(row.id, "measure", event)
                               }
@@ -485,7 +519,12 @@ export function FinalStretchSheet({
                             </div>
                           )}
                         </td>
-                        <td className="final-stretch-col-unit">
+                        <td
+                          className={dataCellClass(row.id, "unitTheme", "final-stretch-col-unit")}
+                          data-row-id={row.id}
+                          data-field="unitTheme"
+                          onPointerDown={editable ? startCellPointerDown : undefined}
+                        >
                           {editable ? (
                             <input
                               type="text"
@@ -496,6 +535,7 @@ export function FinalStretchSheet({
                               onChange={(e) =>
                                 updateRow(row.id, "unitTheme", e.target.value)
                               }
+                              onFocus={guardRangeFocus}
                               onPaste={(event) =>
                                 handleCellPaste(row.id, "unitTheme", event)
                               }
@@ -507,7 +547,12 @@ export function FinalStretchSheet({
                             </div>
                           )}
                         </td>
-                        <td className="final-stretch-col-detail">
+                        <td
+                          className={dataCellClass(row.id, "detail", "final-stretch-col-detail")}
+                          data-row-id={row.id}
+                          data-field="detail"
+                          onPointerDown={editable ? startCellPointerDown : undefined}
+                        >
                           <div className="final-stretch-detail-cell">
                             {editable ? (
                               <input
@@ -519,6 +564,7 @@ export function FinalStretchSheet({
                                 onChange={(e) =>
                                   updateRow(row.id, "detail", e.target.value)
                                 }
+                                onFocus={guardRangeFocus}
                                 onPaste={(event) =>
                                   handleCellPaste(row.id, "detail", event)
                                 }

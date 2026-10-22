@@ -1488,6 +1488,29 @@ body {
   user-select: none;
 }
 
+.final-stretch-sheet--cell-selecting,
+html.final-stretch-cell-selecting,
+html.final-stretch-cell-selecting * {
+  cursor: cell;
+  user-select: none !important;
+}
+
+.final-stretch-sheet--cell-selecting .final-stretch-cell-input {
+  pointer-events: none;
+}
+
+.final-stretch-grid:focus {
+  outline: none;
+}
+
+.final-stretch-grid td.final-stretch-cell--selected {
+  background: #bfdbfe;
+}
+
+.final-stretch-grid td.final-stretch-cell--active {
+  box-shadow: inset 0 0 0 1.5px #1d4ed8;
+}
+
 .final-stretch-cell-input {
   display: block;
   width: 100%;
@@ -1708,6 +1731,12 @@ body {
   .final-stretch-row-delete,
   .final-stretch-col-resize {
     display: none !important;
+  }
+
+  .final-stretch-grid td.final-stretch-cell--selected,
+  .final-stretch-grid td.final-stretch-cell--active {
+    background: transparent !important;
+    box-shadow: none !important;
   }
 
   .final-stretch-policy-section,
