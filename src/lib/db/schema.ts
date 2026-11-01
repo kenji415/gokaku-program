@@ -174,6 +174,8 @@ export const finalStretchSheets = sqliteTable(
       .notNull()
       .references(() => users.id),
     campus: text("campus"),
+    /** 1 のとき直前期シート独自の校舎。0 のときは合格プログラムの校舎に追従 */
+    campusCustomized: integer("campus_customized").notNull().default(0),
     policy: text("policy"),
     examDaySimulation: text("exam_day_simulation"),
     columnWidths: text("column_widths"),

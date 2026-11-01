@@ -22,6 +22,7 @@ import {
   type FinalStretchPasteField,
 } from "@/lib/final-stretch-paste";
 import { useFinalStretchCellSelection } from "@/hooks/use-final-stretch-cell-selection";
+import { EXAM_DR_CAMPUS_NAMES } from "@/lib/constants";
 import { formatStudentDisplayName } from "@/lib/months";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { v4 as uuid } from "uuid";
@@ -32,6 +33,7 @@ type Props = {
   editable?: boolean;
   /** PDF/印刷で編集時と同じ列幅・位置に揃える */
   alignWithEditorColumns?: boolean;
+  onCampusChange?: (campus: string) => void;
   onTargetSchoolChange?: (targetSchool: string) => void;
   onPolicyChange?: (policy: string) => void;
   onRowsChange?: (rows: FinalStretchRowData[]) => void;
@@ -98,6 +100,7 @@ export function FinalStretchSheet({
   sheet,
   editable = true,
   alignWithEditorColumns = false,
+  onCampusChange,
   onTargetSchoolChange,
   onPolicyChange,
   onRowsChange,
@@ -319,7 +322,27 @@ export function FinalStretchSheet({
               </span>
             </h1>
             <div className="final-stretch-sheet-meta">
-              {sheet.campus ? (
+              {editable ? (
+                <select
+                  className="final-stretch-sheet-meta-input"
+                  value={sheet.campus}
+                  onChange={(e) => onCampusChange?.(e.target.value)}
+                  aria-label="受験Dr.校舎"
+                >
+                  <option value="">校舎を選択</option>
+                  {EXAM_DR_CAMPUS_NAMES.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                  {sheet.campus &&
+                    !EXAM_DR_CAMPUS_NAMES.includes(
+                      sheet.campus as (typeof EXAM_DR_CAMPUS_NAMES)[number],
+                    ) && (
+                      <option value={sheet.campus}>{sheet.campus}</option>
+                    )}
+                </select>
+              ) : sheet.campus ? (
                 <span className="final-stretch-sheet-meta-campus">
                   {sheet.campus}
                 </span>

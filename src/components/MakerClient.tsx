@@ -659,6 +659,7 @@ export function MakerClient({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         campus: current.campus,
+        campusFollowsProgram: current.campusFollowsProgram,
         policy: current.policy,
         examDaySimulation: current.examDaySimulation,
         columnWidths: current.columnWidths,
@@ -1759,6 +1760,20 @@ export function MakerClient({
           ) : finalStretchSheet ? (
             <FinalStretchSheet
               sheet={finalStretchSheet}
+              onCampusChange={(campus) => {
+                setFinalStretchSheet((prev) => {
+                  if (!prev) return prev;
+                  const trimmed = campus.trim();
+                  const follows =
+                    !trimmed || trimmed === prev.programCampus.trim();
+                  return {
+                    ...prev,
+                    campus: follows ? prev.programCampus : trimmed,
+                    campusFollowsProgram: follows,
+                  };
+                });
+                bumpFinalStretchSave();
+              }}
               onTargetSchoolChange={(targetSchool) => {
                 setFinalStretchSheet((prev) =>
                   prev

@@ -1126,15 +1126,23 @@ body {
 
 .final-stretch-sheet-meta-input {
   width: auto;
-  max-width: 10em;
+  field-sizing: content;
   flex-shrink: 0;
+  appearance: none;
+  -webkit-appearance: none;
   background: transparent;
   border: none;
-  border-bottom: 1px dashed rgba(255, 255, 255, 0.45);
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.55);
+  border-radius: 0;
   padding: 0;
+  margin: 0;
   text-align: right;
+  text-align-last: right;
   font: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
   color: inherit;
+  cursor: pointer;
 }
 
 .final-stretch-sheet-meta-input option {
@@ -1731,6 +1739,16 @@ html.final-stretch-cell-selecting * {
   .final-stretch-row-delete,
   .final-stretch-col-resize {
     display: none !important;
+  }
+
+  .final-stretch-sheet-meta-input {
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    color: inherit !important;
+    pointer-events: none !important;
   }
 
   .final-stretch-grid td.final-stretch-cell--selected,

@@ -127,7 +127,12 @@ export type FinalStretchSheetData = {
   studentId: string;
   subject: string;
   teacherId: string;
+  /** 画面に出す受験Dr.校舎（未変更時は合格プログラムと同じ） */
   campus: string;
+  /** 合格プログラム側の校舎。同じ値を選ぶと再び追従する */
+  programCampus: string;
+  /** true のとき合格プログラムの校舎変更に追従する */
+  campusFollowsProgram: boolean;
   policy: string;
   examDaySimulation: string;
   columnWidths: FinalStretchColumnWidths;

@@ -37,6 +37,7 @@ export async function PUT(
 
   const body = (await request.json()) as {
     campus: string;
+    campusFollowsProgram?: boolean;
     policy: string;
     examDaySimulation: string;
     columnWidths?: FinalStretchColumnWidths;
@@ -52,6 +53,8 @@ export async function PUT(
 
   saveFinalStretchSheet(id, {
     campus: body.campus ?? existing.campus,
+    campusFollowsProgram:
+      body.campusFollowsProgram ?? existing.campusFollowsProgram,
     policy: body.policy ?? existing.policy,
     examDaySimulation: body.examDaySimulation ?? existing.examDaySimulation,
     columnWidths: body.columnWidths ?? existing.columnWidths,

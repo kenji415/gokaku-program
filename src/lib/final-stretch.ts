@@ -13,7 +13,10 @@ import {
   FINAL_STRETCH_MAX_TOTAL_ROWS,
   isFinalStretchGrade,
 } from "./final-stretch-types";
-import { getTeacherAssignments } from "./programs";
+import {
+  getTeacherAssignments,
+  resolveProgramSheetDisplayCampus,
+} from "./programs";
 import { userCanViewProgramSheet } from "./teacher-overview";
 
 export {
@@ -87,17 +90,45 @@ function trimOrEmpty(value: string | null | undefined): string {
   return value?.trim() ?? "";
 }
 
-function resolveSheetCampus(
-  storedCampus: string | null | undefined,
+/** 合格プログラムシート右上と同じ校舎。シートが無いときは担当講師の基本校舎 */
+function resolveLinkedProgramCampus(
+  studentId: string,
+  subject: string,
   studentCampus: string | null | undefined,
-  teacherDefaultCampus: string | null | undefined,
+  fallbackTeacherDefaultCampus: string | null | undefined,
 ): string {
-  const stored = trimOrEmpty(storedCampus);
-  const studentCampusTrim = trimOrEmpty(studentCampus);
-  const effectiveStored =
-    stored && stored === studentCampusTrim ? "" : stored;
-  if (effectiveStored) return effectiveStored;
-  return trimOrEmpty(teacherDefaultCampus);
+  const db = getDb();
+  const programSheetRow = db
+    .select({
+      campus: schema.programSheets.campus,
+      teacherId: schema.programSheets.teacherId,
+    })
+    .from(schema.programSheets)
+    .where(
+      and(
+        eq(schema.programSheets.studentId, studentId),
+        eq(schema.programSheets.subject, subject),
+      ),
+    )
+    .orderBy(asc(schema.programSheets.updatedAt))
+    .all()
+    .at(-1);
+
+  if (!programSheetRow) {
+    return trimOrEmpty(fallbackTeacherDefaultCampus);
+  }
+
+  const programTeacher = db
+    .select({ defaultCampus: schema.users.defaultCampus })
+    .from(schema.users)
+    .where(eq(schema.users.id, programSheetRow.teacherId))
+    .get();
+
+  return resolveProgramSheetDisplayCampus(
+    programSheetRow.campus,
+    programTeacher?.defaultCampus,
+    studentCampus,
+  );
 }
 
 function createDefaultRowsForSheet(): FinalStretchRowData[] {
@@ -218,16 +249,23 @@ export function getFinalStretchSheet(sheetId: string): FinalStretchSheetData | n
     .map((row) => row.name.trim())
     .filter(Boolean);
 
+  const programCampus = resolveLinkedProgramCampus(
+    sheet.studentId,
+    sheet.subject,
+    student.campus,
+    teacher.defaultCampus,
+  );
+  const storedCampus = trimOrEmpty(sheet.campus);
+  const campusFollowsProgram = sheet.campusCustomized !== 1 || !storedCampus;
+
   return {
     id: sheet.id,
     studentId: sheet.studentId,
     subject: sheet.subject,
     teacherId: sheet.teacherId,
-    campus: resolveSheetCampus(
-      sheet.campus,
-      student.campus,
-      teacher.defaultCampus,
-    ),
+    campus: campusFollowsProgram ? programCampus : storedCampus,
+    programCampus,
+    campusFollowsProgram,
     policy: sheet.policy ?? "",
     examDaySimulation: sheet.examDaySimulation ?? "",
     columnWidths: parseFinalStretchColumnWidths(sheet.columnWidths),
@@ -330,33 +368,6 @@ export function findOrCreateFinalStretchSheet(params: {
       .get()!;
   }
 
-  const programSheetRow = db
-    .select({
-      id: schema.programSheets.id,
-      campus: schema.programSheets.campus,
-    })
-    .from(schema.programSheets)
-    .where(
-      and(
-        eq(schema.programSheets.studentId, params.studentId),
-        eq(schema.programSheets.subject, params.subject),
-      ),
-    )
-    .orderBy(asc(schema.programSheets.updatedAt))
-    .all()
-    .at(-1);
-
-  if (
-    programSheetRow &&
-    trimOrEmpty(sheet.campus) === "" &&
-    trimOrEmpty(programSheetRow.campus)
-  ) {
-    db.update(schema.finalStretchSheets)
-      .set({ campus: programSheetRow.campus, updatedAt: now })
-      .where(eq(schema.finalStretchSheets.id, sheet.id))
-      .run();
-  }
-
   return getFinalStretchSheet(sheet.id)!;
 }
 
@@ -364,6 +375,8 @@ export function saveFinalStretchSheet(
   sheetId: string,
   data: {
     campus: string;
+    /** true のとき合格プログラムの校舎に戻す。省略時はプログラム校舎と同じなら追従 */
+    campusFollowsProgram?: boolean;
     policy: string;
     examDaySimulation: string;
     columnWidths: FinalStretchColumnWidths;
@@ -379,10 +392,49 @@ export function saveFinalStretchSheet(
 ): void {
   const db = getDb();
   const now = new Date().toISOString();
+  const trimmedCampus = trimOrEmpty(data.campus);
+  let followsProgram = data.campusFollowsProgram === true;
+  if (data.campusFollowsProgram == null) {
+    const existing = db
+      .select({
+        studentId: schema.finalStretchSheets.studentId,
+        subject: schema.finalStretchSheets.subject,
+        teacherId: schema.finalStretchSheets.teacherId,
+      })
+      .from(schema.finalStretchSheets)
+      .where(eq(schema.finalStretchSheets.id, sheetId))
+      .get();
+    const student = existing
+      ? db
+          .select({ campus: schema.students.campus })
+          .from(schema.students)
+          .where(eq(schema.students.id, existing.studentId))
+          .get()
+      : undefined;
+    const teacher = existing
+      ? db
+          .select({ defaultCampus: schema.users.defaultCampus })
+          .from(schema.users)
+          .where(eq(schema.users.id, existing.teacherId))
+          .get()
+      : undefined;
+    const programCampus = existing
+      ? resolveLinkedProgramCampus(
+          existing.studentId,
+          existing.subject,
+          student?.campus,
+          teacher?.defaultCampus,
+        )
+      : "";
+    followsProgram = !trimmedCampus || trimmedCampus === programCampus;
+  } else if (!trimmedCampus) {
+    followsProgram = true;
+  }
 
   db.update(schema.finalStretchSheets)
     .set({
-      campus: data.campus || null,
+      campus: followsProgram ? null : trimmedCampus,
+      campusCustomized: followsProgram ? 0 : 1,
       policy: data.policy,
       examDaySimulation: data.examDaySimulation,
       columnWidths: JSON.stringify(data.columnWidths),

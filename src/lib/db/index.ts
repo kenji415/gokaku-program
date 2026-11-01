@@ -18,6 +18,20 @@ const globalForDb = globalThis as unknown as {
   db?: { drizzle: AppDb; sqlite: Database.Database };
 };
 
+function ensureFinalStretchCampusCustomized(sqlite: Database.Database) {
+  const columns = sqlite
+    .prepare("PRAGMA table_info(final_stretch_sheets)")
+    .all() as { name: string }[];
+  if (
+    columns.length > 0 &&
+    !columns.some((column) => column.name === "campus_customized")
+  ) {
+    sqlite.exec(
+      `ALTER TABLE final_stretch_sheets ADD COLUMN campus_customized INTEGER NOT NULL DEFAULT 0`,
+    );
+  }
+}
+
 function ensureStudentTestResultColumns(sqlite: Database.Database) {
   const resultColumns = sqlite
     .prepare("PRAGMA table_info(student_test_results)")
@@ -205,6 +219,11 @@ function ensureSchema(sqlite: Database.Database) {
   if (!finalStretchSheetColumns.some((c) => c.name === "pdf_exported_at")) {
     sqlite.exec(
       `ALTER TABLE final_stretch_sheets ADD COLUMN pdf_exported_at TEXT`,
+    );
+  }
+  if (!finalStretchSheetColumns.some((c) => c.name === "campus_customized")) {
+    sqlite.exec(
+      `ALTER TABLE final_stretch_sheets ADD COLUMN campus_customized INTEGER NOT NULL DEFAULT 0`,
     );
   }
 
@@ -812,6 +831,7 @@ export function getDb() {
     globalForDb.db = createDb();
   } else {
     ensureStudentTestResultColumns(globalForDb.db.sqlite);
+    ensureFinalStretchCampusCustomized(globalForDb.db.sqlite);
     // ホットリロード後や外部 DB 差し替え後でも担当スロット移行を再適用
     migrateStudentAssignmentsMultiTeacher(globalForDb.db.sqlite);
     migrateStudentAssignmentSlots(globalForDb.db.sqlite);
