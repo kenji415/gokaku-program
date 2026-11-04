@@ -61,10 +61,9 @@ async function launchPdfBrowser(): Promise<Browser> {
     headless: true,
     executablePath: await resolveChromeExecutable(),
     args: [
-      "--headless=new",
+      // GPU を切ると Windows では headless の Chrome が左上に白い窓として残る
+      "--window-position=-32000,-32000",
       "--disable-dev-shm-usage",
-      "--disable-gpu",
-      "--disable-software-rasterizer",
       "--disable-extensions",
       "--disable-background-networking",
       "--disable-sync",
