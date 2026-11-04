@@ -65,11 +65,14 @@ export function defaultCourseProposalYear(): number {
   return new Date().getFullYear();
 }
 
-export function defaultCourseProposalSeason(): CourseProposalSeason {
-  const month = new Date().getMonth() + 1;
-  if (month <= 2 || month === 12) return "winter";
-  if (month <= 5) return "spring";
-  return "summer";
+/** 9〜1月は冬期、2〜3月は春期、4〜8月は夏期 */
+export function defaultCourseProposalSeason(
+  now = new Date(),
+): CourseProposalSeason {
+  const month = now.getMonth() + 1;
+  if (month === 2 || month === 3) return "spring";
+  if (month >= 4 && month <= 8) return "summer";
+  return "winter";
 }
 
 export function isCourseProposalSeason(value: string): value is CourseProposalSeason {
