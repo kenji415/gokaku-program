@@ -1961,7 +1961,8 @@ html.final-stretch-cell-selecting * {
   background: #fff;
   padding: 1.5mm 2mm;
   font-size: 14px;
-  line-height: 1.4;
+  /* 上下 padding 1.5mm×2 を除いた高さにちょうど10行 */
+  line-height: calc((var(--course-proposal-subject-advice-h) - 3mm) / 10);
   outline: none;
   overflow: auto;
   white-space: pre-wrap;
