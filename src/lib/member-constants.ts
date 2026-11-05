@@ -70,7 +70,7 @@ export const INITIAL_MEMBERS: MemberSeed[] = [
     loginId: "海田",
     password: "matsuura",
     memberRole: "管理者",
-    assignedCampus: "四谷校",
+    assignedCampus: "四谷本部校",
   },
   { name: "天野　源太郎", loginId: "天野", password: "mizuta", memberRole: "社員" },
   { name: "白石　聡", loginId: "白石", password: "mineoka", memberRole: "社員" },

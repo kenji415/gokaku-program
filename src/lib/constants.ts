@@ -136,7 +136,7 @@ export const CRAM_SCHOOL_NAMES = [
 
 /** 受験Dr.校舎（プログラムシート右上）の候補 */
 export const EXAM_DR_CAMPUS_NAMES = [
-  "四谷校",
+  "四谷本部校",
   "麻布十番校",
   "代々木校",
   "東京校",

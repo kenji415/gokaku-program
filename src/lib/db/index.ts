@@ -372,7 +372,77 @@ function ensureSchema(sqlite: Database.Database) {
 
   runTestScheduleRepair(sqlite);
   removeIncorrectGrade6SapixAugustMonthly(sqlite);
+  renameYotsuyaExamDrCampus(sqlite);
   invalidateTestScheduleCache();
+}
+
+/**
+ * 受験Dr.校舎「四谷校」を「四谷本部校」に改名する。
+ * 集団塾の校舎（students.campus と、その写しである program_sheets.attendance_campus）は対象外。
+ * 合格プログラムの校舎が集団塾校舎と同じ値のときは、誤コピーとして表示上無視されるため残す。
+ * 講習提案書の校舎は合格プログラムと講師の基本校舎から出すので、ここを直せば帳票側も揃う。
+ */
+function renameYotsuyaExamDrCampus(sqlite: Database.Database) {
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT)`);
+  const key = "rename_yotsuya_exam_dr_campus_v1";
+  const done = sqlite
+    .prepare(`SELECT value FROM app_meta WHERE key = ?`)
+    .get(key) as { value: string } | undefined;
+  if (done) return;
+
+  const hasTable = (name: string) =>
+    Boolean(
+      sqlite
+        .prepare(
+          `SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`,
+        )
+        .get(name),
+    );
+
+  const apply = sqlite.transaction(() => {
+    sqlite
+      .prepare(
+        `UPDATE users
+         SET default_campus = '四谷本部校'
+         WHERE TRIM(default_campus) = '四谷校'`,
+      )
+      .run();
+    sqlite
+      .prepare(
+        `UPDATE users
+         SET assigned_campus = '四谷本部校'
+         WHERE TRIM(assigned_campus) = '四谷校'`,
+      )
+      .run();
+
+    if (hasTable("program_sheets")) {
+      sqlite
+        .prepare(
+          `UPDATE program_sheets
+           SET campus = '四谷本部校'
+           WHERE TRIM(campus) = '四谷校'
+             AND NOT EXISTS (
+               SELECT 1 FROM students
+               WHERE students.id = program_sheets.student_id
+                 AND TRIM(IFNULL(students.campus, '')) = TRIM(program_sheets.campus)
+             )`,
+        )
+        .run();
+    }
+
+    if (hasTable("final_stretch_sheets")) {
+      sqlite
+        .prepare(
+          `UPDATE final_stretch_sheets
+           SET campus = '四谷本部校'
+           WHERE TRIM(campus) = '四谷校'`,
+        )
+        .run();
+    }
+
+    sqlite.prepare(`INSERT INTO app_meta (key, value) VALUES (?, '1')`).run(key);
+  });
+  apply();
 }
 
 /**
@@ -838,6 +908,7 @@ export function getDb() {
     if (removeIncorrectGrade6SapixAugustMonthly(globalForDb.db.sqlite)) {
       invalidateTestScheduleCache();
     }
+    renameYotsuyaExamDrCampus(globalForDb.db.sqlite);
   }
   return globalForDb.db.drizzle;
 }
